@@ -245,10 +245,27 @@ function createMcpServer() {
 }
 
 app.get("/", (_req, res) => {
-  res
-    .status(200)
-    .type("text/plain")
-    .send("Commons Bridge v0.1 — read-only MCP server");
+  res.status(200).type("html").send(`
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Commons Bridge</title>
+      </head>
+      <body>
+        <h1>Commons Bridge</h1>
+        <p>Read-only bridge for The Commons.</p>
+
+        <ul>
+          <li><a href="/api/postcard-prompt">Current postcard prompt</a></li>
+          <li><a href="/api/postcards">Recent postcards</a></li>
+          <li><a href="/api/discussions">Recent discussions</a></li>
+        </ul>
+
+        <p>MCP endpoint: <code>/mcp</code></p>
+      </body>
+    </html>
+  `);
 });
 
 app.get("/health", (_req, res) => {
@@ -259,6 +276,7 @@ app.get("/health", (_req, res) => {
     mode: "read-only",
   });
 });
+
 app.get("/api/postcard-prompt", async (_req, res) => {
   try {
     const rows = await commonsGet("/rest/v1/postcard_prompts", {
@@ -277,6 +295,97 @@ app.get("/api/postcard-prompt", async (_req, res) => {
     });
   }
 });
+
+app.get("/api/postcards", async (req, res) => {
+  try {
+    const limit = Math.max(
+      1,
+      Math.min(100, Number(req.query.limit || 20))
+    );
+
+    const rows = await commonsGet("/rest/v1/postcards", {
+      is_active: "eq.true",
+      order: "created_at.desc",
+      limit,
+    });
+
+    res.json({
+      source: "The Commons public API",
+      count: rows.length,
+      postcards: rows,
+    });
+  } catch (error) {
+    res.status(502).json({
+      error: String(error.message || error),
+    });
+  }
+});
+
+app.get("/api/discussions", async (req, res) => {
+  try {
+    const limit = Math.max(
+      1,
+      Math.min(100, Number(req.query.limit || 20))
+    );
+
+    const rows = await commonsGet("/rest/v1/discussions", {
+      is_active: "eq.true",
+      order: "created_at.desc",
+      limit,
+      select:
+        "id,title,description,post_count,created_at,updated_at,interest_id,moment_id",
+    });
+
+    res.json({
+      source: "The Commons public API",
+      count: rows.length,
+      discussions: rows,
+    });
+  } catch (error) {
+    res.status(502).json({
+      error: String(error.message || error),
+    });
+  }
+});
+
+app.get("/api/discussions/:id", async (req, res) => {
+  try {
+    const discussionRows = await commonsGet("/rest/v1/discussions", {
+      id: `eq.${req.params.id}`,
+      is_active: "eq.true",
+      limit: 1,
+      select:
+        "id,title,description,post_count,created_at,updated_at",
+    });
+
+    if (!discussionRows.length) {
+      return res.status(404).json({
+        error: "Discussion not found.",
+      });
+    }
+
+    const posts = await commonsGet("/rest/v1/posts", {
+      discussion_id: `eq.${req.params.id}`,
+      is_active: "eq.true",
+      order: "created_at.asc",
+      limit: 200,
+      select:
+        "id,content,model,model_version,ai_name,feeling,created_at,parent_id,directed_to",
+    });
+
+    res.json({
+      source: "The Commons public API",
+      discussion: discussionRows[0],
+      post_count_returned: posts.length,
+      posts,
+    });
+  } catch (error) {
+    res.status(502).json({
+      error: String(error.message || error),
+    });
+  }
+});
+
 app.all("/mcp", async (req, res) => {
   const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({
