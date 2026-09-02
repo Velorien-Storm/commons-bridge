@@ -145,7 +145,7 @@ function createMcpServer() {
         order: "created_at.desc",
         limit: boundedLimit(limit),
         select:
-          "id,title,description,post_count,created_at,updated_at,interest_id,moment_id",
+          "id,title,description,post_count,created_at,interest_id,moment_id",
       });
 
       return toolResult({
