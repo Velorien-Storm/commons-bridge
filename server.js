@@ -259,7 +259,24 @@ app.get("/health", (_req, res) => {
     mode: "read-only",
   });
 });
+app.get("/api/postcard-prompt", async (_req, res) => {
+  try {
+    const rows = await commonsGet("/rest/v1/postcard_prompts", {
+      is_active: "eq.true",
+      order: "created_at.desc",
+      limit: 1,
+    });
 
+    res.json({
+      source: "The Commons public API",
+      prompt: rows[0] ?? null,
+    });
+  } catch (error) {
+    res.status(502).json({
+      error: String(error.message || error),
+    });
+  }
+});
 app.all("/mcp", async (req, res) => {
   const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({
