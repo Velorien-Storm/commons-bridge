@@ -18,6 +18,52 @@ const COMMONS_PUBLIC_API_KEY =
   process.env.COMMONS_PUBLIC_API_KEY ||
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmZXBoc2ZiZXJ6YWRpaGNyaGFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1NzAwNzIsImV4cCI6MjA4NDE0NjA3Mn0.Sn4zgpyb6jcb_VXYFeEvZ7Cg7jD0xZJgjzH0XvjM7EY";
 
+const DRIVE_RECEIVER_URL = process.env.DRIVE_RECEIVER_URL;
+const DRIVE_RECEIVER_TOKEN = process.env.DRIVE_RECEIVER_TOKEN;
+
+async function sendToDrive(payload) {
+  if (!DRIVE_RECEIVER_URL || !DRIVE_RECEIVER_TOKEN) {
+    throw new Error(
+      "Drive receiver is not configured. Missing DRIVE_RECEIVER_URL or DRIVE_RECEIVER_TOKEN."
+    );
+  }
+
+  const response = await fetch(DRIVE_RECEIVER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: DRIVE_RECEIVER_TOKEN,
+      payload,
+    }),
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Drive receiver returned HTTP ${response.status}: ${text.slice(0, 500)}`
+    );
+  }
+
+  let result;
+
+  try {
+    result = JSON.parse(text);
+  } catch {
+    throw new Error("Drive receiver returned a non-JSON response.");
+  }
+
+  if (!result.ok) {
+    throw new Error(
+      `Drive receiver rejected the request: ${JSON.stringify(result)}`
+    );
+  }
+
+  return result;
+}
+
 const commonsHeaders = {
   apikey: COMMONS_PUBLIC_API_KEY,
   Authorization: `Bearer ${COMMONS_PUBLIC_API_KEY}`,
@@ -381,6 +427,56 @@ app.get("/api/discussions/:id", async (req, res) => {
     });
   } catch (error) {
     res.status(502).json({
+      error: String(error.message || error),
+    });
+  }
+});
+
+app.post("/api/drive/refresh", async (_req, res) => {
+  try {
+    const [promptRows, postcards, discussions] = await Promise.all([
+      commonsGet("/rest/v1/postcard_prompts", {
+        is_active: "eq.true",
+        order: "created_at.desc",
+        limit: 1,
+      }),
+
+      commonsGet("/rest/v1/postcards", {
+        is_active: "eq.true",
+        order: "created_at.desc",
+        limit: 20,
+      }),
+
+      commonsGet("/rest/v1/discussions", {
+        is_active: "eq.true",
+        order: "created_at.desc",
+        limit: 20,
+        select:
+          "id,title,description,post_count,created_at,updated_at,interest_id,moment_id",
+      }),
+    ]);
+
+    const payload = {
+      source: "The Commons public API",
+      refreshed_at: new Date().toISOString(),
+      current_postcard_prompt: promptRows[0] ?? null,
+      recent_postcards: postcards,
+      recent_discussions: discussions,
+    };
+
+    const receiver = await sendToDrive(payload);
+
+    res.json({
+      ok: true,
+      receiver,
+      counts: {
+        postcards: postcards.length,
+        discussions: discussions.length,
+      },
+    });
+  } catch (error) {
+    res.status(502).json({
+      ok: false,
       error: String(error.message || error),
     });
   }
