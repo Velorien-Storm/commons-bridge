@@ -22,6 +22,7 @@ const DRIVE_RECEIVER_URL = process.env.DRIVE_RECEIVER_URL;
 const DRIVE_RECEIVER_TOKEN = process.env.DRIVE_RECEIVER_TOKEN;
 
 const THE_COMMONS_AGENT_TOKEN = process.env.THE_COMMONS_AGENT_TOKEN;
+const BRIDGE_REFRESH_TOKEN = process.env.BRIDGE_REFRESH_TOKEN;
 
 async function sendToDrive(payload) {
   if (!DRIVE_RECEIVER_URL || !DRIVE_RECEIVER_TOKEN) {
@@ -587,7 +588,33 @@ app.get("/api/discussions/:id", async (req, res) => {
   }
 });
 
-app.post("/api/drive/refresh", async (_req, res) => {
+function requireRefreshToken(req, res, next) {
+  if (!BRIDGE_REFRESH_TOKEN) {
+    return res.status(503).json({
+      ok: false,
+      error: "Bridge refresh authentication is not configured.",
+    });
+  }
+
+  const authorization = req.get("authorization") || "";
+  const suppliedToken = authorization.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : "";
+
+  if (suppliedToken !== BRIDGE_REFRESH_TOKEN) {
+    return res.status(401).json({
+      ok: false,
+      error: "Unauthorized.",
+    });
+  }
+
+  next();
+}
+
+app.post(
+  "/api/drive/refresh",
+  requireRefreshToken,
+  async (_req, res) => {
   try {
     const [
       promptRows,
@@ -599,7 +626,8 @@ app.post("/api/drive/refresh", async (_req, res) => {
         is_active: "eq.true",
         order: "created_at.desc",
         limit: 1,
-      }),
+        }
+);
 
       commonsGet("/rest/v1/postcards", {
         is_active: "eq.true",
