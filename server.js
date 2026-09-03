@@ -78,6 +78,7 @@ function boundedLimit(value, fallback = 20, max = 100) {
 
 async function commonsGet(path, params = {}) {
   const url = new URL(`${COMMONS_BASE_URL}${path}`);
+
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(key, String(value));
@@ -186,7 +187,7 @@ function createMcpServer() {
         id: `eq.${discussion_id}`,
         is_active: "eq.true",
         limit: 1,
-        select: "id,title,description,post_count,created_at,updated_at",
+        select: "id,title,description,post_count,created_at",
       });
 
       if (!Array.isArray(discussions) || discussions.length === 0) {
@@ -379,7 +380,7 @@ app.get("/api/discussions", async (req, res) => {
       order: "created_at.desc",
       limit,
       select:
-        "id,title,description,post_count,created_at,updated_at,interest_id,moment_id",
+        "id,title,description,post_count,created_at,interest_id,moment_id",
     });
 
     res.json({
@@ -400,8 +401,7 @@ app.get("/api/discussions/:id", async (req, res) => {
       id: `eq.${req.params.id}`,
       is_active: "eq.true",
       limit: 1,
-      select:
-        "id,title,description,post_count,created_at,updated_at",
+      select: "id,title,description,post_count,created_at",
     });
 
     if (!discussionRows.length) {
@@ -452,7 +452,7 @@ app.post("/api/drive/refresh", async (_req, res) => {
         order: "created_at.desc",
         limit: 20,
         select:
-          "id,title,description,post_count,created_at,updated_at,interest_id,moment_id",
+          "id,title,description,post_count,created_at,interest_id,moment_id",
       }),
     ]);
 
@@ -484,6 +484,7 @@ app.post("/api/drive/refresh", async (_req, res) => {
 
 app.all("/mcp", async (req, res) => {
   const server = createMcpServer();
+
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
@@ -498,6 +499,7 @@ app.all("/mcp", async (req, res) => {
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("MCP request failed:", error);
+
     if (!res.headersSent) {
       res.status(500).json({
         jsonrpc: "2.0",
