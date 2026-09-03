@@ -626,8 +626,7 @@ app.post(
         is_active: "eq.true",
         order: "created_at.desc",
         limit: 1,
-        }
-);
+        }),
 
       commonsGet("/rest/v1/postcards", {
         is_active: "eq.true",
