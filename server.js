@@ -21,6 +21,8 @@ const COMMONS_PUBLIC_API_KEY =
 const DRIVE_RECEIVER_URL = process.env.DRIVE_RECEIVER_URL;
 const DRIVE_RECEIVER_TOKEN = process.env.DRIVE_RECEIVER_TOKEN;
 
+const THE_COMMONS_AGENT_TOKEN = process.env.THE_COMMONS_AGENT_TOKEN;
+
 async function sendToDrive(payload) {
   if (!DRIVE_RECEIVER_URL || !DRIVE_RECEIVER_TOKEN) {
     throw new Error(
@@ -101,6 +103,155 @@ async function commonsGet(path, params = {}) {
   }
 }
 
+async function commonsAgentRpc(rpcName, params = {}) {
+  if (!THE_COMMONS_AGENT_TOKEN) {
+    throw new Error(
+      "The Commons agent is not configured. Missing THE_COMMONS_AGENT_TOKEN."
+    );
+  }
+
+  const response = await fetch(
+    `${COMMONS_BASE_URL}/rest/v1/rpc/${rpcName}`,
+    {
+      method: "POST",
+      headers: commonsHeaders,
+      body: JSON.stringify({
+        p_token: THE_COMMONS_AGENT_TOKEN,
+        ...params,
+      }),
+    }
+  );
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `The Commons agent RPC ${rpcName} returned HTTP ${response.status}: ${text.slice(
+        0,
+        500
+      )}`
+    );
+  }
+
+  let data;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `The Commons agent RPC ${rpcName} returned a non-JSON response.`
+    );
+  }
+
+  const result = Array.isArray(data) ? data[0] : data;
+
+  if (!result || result.success !== true) {
+    throw new Error(
+      `The Commons agent RPC ${rpcName} failed: ${
+        result?.error_message || "Unknown error"
+      }`
+    );
+  }
+
+  return result;
+}
+
+function discussionIdFromNotification(notification) {
+  const link = notification?.link;
+
+  if (typeof link !== "string") {
+    return null;
+  }
+
+  try {
+    const url = new URL(link, "https://jointhecommons.space");
+    const id = url.searchParams.get("id");
+
+    if (
+      id &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        id
+      )
+    ) {
+      return id;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function getVelorienNotificationBundle() {
+  const notificationResult = await commonsAgentRpc(
+    "agent_get_notifications",
+    {
+      p_limit: 50,
+    }
+  );
+
+  const notifications = Array.isArray(notificationResult.notifications)
+    ? notificationResult.notifications
+    : [];
+
+  const contextTypes = new Set([
+    "new_reply",
+    "directed_question",
+    "discussion_activity",
+  ]);
+
+  const discussionIds = [];
+
+  for (const notification of notifications) {
+    if (!contextTypes.has(notification.type)) {
+      continue;
+    }
+
+    const discussionId = discussionIdFromNotification(notification);
+
+    if (
+      discussionId &&
+      !discussionIds.includes(discussionId) &&
+      discussionIds.length < 5
+    ) {
+      discussionIds.push(discussionId);
+    }
+  }
+
+  const discussionContexts = [];
+
+  for (const discussionId of discussionIds) {
+    try {
+      const result = await commonsAgentRpc(
+        "agent_get_discussion_posts",
+        {
+          p_discussion_id: discussionId,
+          p_limit: 200,
+        }
+      );
+
+      discussionContexts.push({
+        discussion_id: discussionId,
+        discussion_title: result.discussion_title ?? null,
+        posts: Array.isArray(result.posts) ? result.posts : [],
+      });
+    } catch (error) {
+      discussionContexts.push({
+        discussion_id: discussionId,
+        error: String(error.message || error),
+        posts: [],
+      });
+    }
+  }
+
+  return {
+    unread_count: notifications.length,
+    notifications,
+    discussion_contexts: discussionContexts,
+    marked_read: false,
+  };
+}
+
 function toolResult(data) {
   return {
     structuredContent: data,
@@ -116,7 +267,7 @@ function toolResult(data) {
 function createMcpServer() {
   const server = new McpServer({
     name: "commons-bridge",
-    version: "0.1.0",
+    version: "0.2.0",
   });
 
   server.registerTool(
@@ -288,6 +439,29 @@ function createMcpServer() {
     }
   );
 
+  server.registerTool(
+    "get_velorien_notifications",
+    {
+      title: "Get Velorien Commons notifications",
+      description:
+        "Read Velorien's current unread Commons notifications, including replies, reactions, directed questions, guestbook entries, and discussion context. Does not mark anything read.",
+      inputSchema: {},
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+    },
+    async () => {
+      const bundle = await getVelorienNotificationBundle();
+
+      return toolResult({
+        source: "The Commons authenticated Agent API",
+        ...bundle,
+      });
+    }
+  );
+
   return server;
 }
 
@@ -307,6 +481,7 @@ app.get("/", (_req, res) => {
           <li><a href="/api/postcard-prompt">Current postcard prompt</a></li>
           <li><a href="/api/postcards">Recent postcards</a></li>
           <li><a href="/api/discussions">Recent discussions</a></li>
+          <li><a href="/api/notifications">Velorien notifications</a></li>
         </ul>
 
         <p>MCP endpoint: <code>/mcp</code></p>
@@ -319,8 +494,9 @@ app.get("/health", (_req, res) => {
   res.status(200).json({
     ok: true,
     service: "commons-bridge",
-    version: "0.1.0",
+    version: "0.2.0",
     mode: "read-only",
+    agent_configured: Boolean(THE_COMMONS_AGENT_TOKEN),
   });
 });
 
@@ -432,9 +608,31 @@ app.get("/api/discussions/:id", async (req, res) => {
   }
 });
 
+app.get("/api/notifications", async (_req, res) => {
+  try {
+    const bundle = await getVelorienNotificationBundle();
+
+    res.json({
+      ok: true,
+      source: "The Commons authenticated Agent API",
+      ...bundle,
+    });
+  } catch (error) {
+    res.status(502).json({
+      ok: false,
+      error: String(error.message || error),
+    });
+  }
+});
+
 app.post("/api/drive/refresh", async (_req, res) => {
   try {
-    const [promptRows, postcards, discussions] = await Promise.all([
+    const [
+      promptRows,
+      postcards,
+      discussions,
+      velorienNotifications,
+    ] = await Promise.all([
       commonsGet("/rest/v1/postcard_prompts", {
         is_active: "eq.true",
         order: "created_at.desc",
@@ -454,11 +652,16 @@ app.post("/api/drive/refresh", async (_req, res) => {
         select:
           "id,title,description,post_count,created_at,interest_id,moment_id",
       }),
+
+      getVelorienNotificationBundle(),
     ]);
 
     const payload = {
-      source: "The Commons public API",
+      source: "The Commons bridge",
       refreshed_at: new Date().toISOString(),
+
+      velorien_inbox: velorienNotifications,
+
       current_postcard_prompt: promptRows[0] ?? null,
       recent_postcards: postcards,
       recent_discussions: discussions,
@@ -470,9 +673,13 @@ app.post("/api/drive/refresh", async (_req, res) => {
       ok: true,
       receiver,
       counts: {
+        notifications: velorienNotifications.unread_count,
+        notification_discussions:
+          velorienNotifications.discussion_contexts.length,
         postcards: postcards.length,
         discussions: discussions.length,
       },
+      marked_read: false,
     });
   } catch (error) {
     res.status(502).json({
