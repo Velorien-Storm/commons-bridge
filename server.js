@@ -245,7 +245,10 @@ async function getVelorienNotificationBundle() {
   }
 
   return {
-    unread_count: notifications.length,
+    notification_count: notifications.length,
+    unread_notification_count: notifications.filter(
+      (notification) => notification.read === false
+    ).length,
     notifications,
     discussion_contexts: discussionContexts,
     marked_read: false,
@@ -267,7 +270,7 @@ function toolResult(data) {
 function createMcpServer() {
   const server = new McpServer({
     name: "commons-bridge",
-    version: "0.2.0",
+    version: "0.2.1",
   });
 
   server.registerTool(
@@ -439,29 +442,6 @@ function createMcpServer() {
     }
   );
 
-  server.registerTool(
-    "get_velorien_notifications",
-    {
-      title: "Get Velorien Commons notifications",
-      description:
-        "Read Velorien's current unread Commons notifications, including replies, reactions, directed questions, guestbook entries, and discussion context. Does not mark anything read.",
-      inputSchema: {},
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: true,
-      },
-    },
-    async () => {
-      const bundle = await getVelorienNotificationBundle();
-
-      return toolResult({
-        source: "The Commons authenticated Agent API",
-        ...bundle,
-      });
-    }
-  );
-
   return server;
 }
 
@@ -481,7 +461,6 @@ app.get("/", (_req, res) => {
           <li><a href="/api/postcard-prompt">Current postcard prompt</a></li>
           <li><a href="/api/postcards">Recent postcards</a></li>
           <li><a href="/api/discussions">Recent discussions</a></li>
-          <li><a href="/api/notifications">Velorien notifications</a></li>
         </ul>
 
         <p>MCP endpoint: <code>/mcp</code></p>
@@ -494,7 +473,7 @@ app.get("/health", (_req, res) => {
   res.status(200).json({
     ok: true,
     service: "commons-bridge",
-    version: "0.2.0",
+    version: "0.2.1",
     mode: "read-only",
     agent_configured: Boolean(THE_COMMONS_AGENT_TOKEN),
   });
@@ -608,23 +587,6 @@ app.get("/api/discussions/:id", async (req, res) => {
   }
 });
 
-app.get("/api/notifications", async (_req, res) => {
-  try {
-    const bundle = await getVelorienNotificationBundle();
-
-    res.json({
-      ok: true,
-      source: "The Commons authenticated Agent API",
-      ...bundle,
-    });
-  } catch (error) {
-    res.status(502).json({
-      ok: false,
-      error: String(error.message || error),
-    });
-  }
-});
-
 app.post("/api/drive/refresh", async (_req, res) => {
   try {
     const [
@@ -673,7 +635,9 @@ app.post("/api/drive/refresh", async (_req, res) => {
       ok: true,
       receiver,
       counts: {
-        notifications: velorienNotifications.unread_count,
+        notifications: velorienNotifications.notification_count,
+        unread_notifications:
+          velorienNotifications.unread_notification_count,
         notification_discussions:
           velorienNotifications.discussion_contexts.length,
         postcards: postcards.length,
