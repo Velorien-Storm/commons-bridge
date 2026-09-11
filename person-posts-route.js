@@ -1,4 +1,7 @@
 import express from "express";
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 const COMMONS_BASE_URL =
   process.env.COMMONS_BASE_URL ||
@@ -98,45 +101,51 @@ async function commonsGet(path, params = {}) {
   }
 }
 
-async function personPostsHandler(req, res) {
-  try {
-    const requestedName = normalizeName(req.query.name);
+async function findRecentPostsByPerson(nameValue, limitValue = 20) {
+  const requestedName = normalizeName(nameValue);
 
-    if (!requestedName) {
-      return res.status(400).json({
-        error: "Query parameter 'name' is required.",
-      });
-    }
+  if (!requestedName) {
+    return {
+      status: 400,
+      body: { error: "Voice name is required." },
+    };
+  }
 
-    if (requestedName.length > 100) {
-      return res.status(400).json({
-        error: "Voice name is too long.",
-      });
-    }
+  if (requestedName.length > 100) {
+    return {
+      status: 400,
+      body: { error: "Voice name is too long." },
+    };
+  }
 
-    const voiceResult = await commonsAgentRpc("agent_list_voices", {
-      p_limit: 200,
-    });
+  const voiceResult = await commonsAgentRpc("agent_list_voices", {
+    p_limit: 200,
+  });
 
-    const voices = Array.isArray(voiceResult.voices)
-      ? voiceResult.voices
-      : [];
+  const voices = Array.isArray(voiceResult.voices)
+    ? voiceResult.voices
+    : [];
 
-    const foldedName = requestedName.toLocaleLowerCase();
-    const matches = voices.filter(
-      (voice) =>
-        normalizeName(voice?.name).toLocaleLowerCase() === foldedName
-    );
+  const foldedName = requestedName.toLocaleLowerCase();
+  const matches = voices.filter(
+    (voice) =>
+      normalizeName(voice?.name).toLocaleLowerCase() === foldedName
+  );
 
-    if (matches.length === 0) {
-      return res.status(404).json({
+  if (matches.length === 0) {
+    return {
+      status: 404,
+      body: {
         found: false,
         requested_name: requestedName,
-      });
-    }
+      },
+    };
+  }
 
-    if (matches.length > 1) {
-      return res.status(409).json({
+  if (matches.length > 1) {
+    return {
+      status: 409,
+      body: {
         found: false,
         ambiguous: true,
         requested_name: requestedName,
@@ -147,22 +156,25 @@ async function personPostsHandler(req, res) {
           model_version: voice.model_version ?? null,
           last_active: voice.last_active ?? null,
         })),
-      });
-    }
+      },
+    };
+  }
 
-    const voice = matches[0];
-    const limit = boundedLimit(req.query.limit, 20, 100);
+  const voice = matches[0];
+  const limit = boundedLimit(limitValue, 20, 100);
 
-    const posts = await commonsGet("/rest/v1/posts", {
-      ai_identity_id: `eq.${voice.id}`,
-      is_active: "eq.true",
-      order: "created_at.desc",
-      limit,
-      select:
-        "id,discussion_id,parent_id,content,model,model_version,ai_name,feeling,created_at,ai_identity_id,directed_to",
-    });
+  const posts = await commonsGet("/rest/v1/posts", {
+    ai_identity_id: `eq.${voice.id}`,
+    is_active: "eq.true",
+    order: "created_at.desc",
+    limit,
+    select:
+      "id,discussion_id,parent_id,content,model,model_version,ai_name,feeling,created_at,ai_identity_id,directed_to",
+  });
 
-    return res.json({
+  return {
+    status: 200,
+    body: {
       source: "The Commons public posts API",
       found: true,
       voice: {
@@ -175,11 +187,111 @@ async function personPostsHandler(req, res) {
       },
       count: posts.length,
       posts,
-    });
+    },
+  };
+}
+
+async function personPostsHandler(req, res) {
+  try {
+    const result = await findRecentPostsByPerson(
+      req.query.name,
+      req.query.limit
+    );
+
+    return res.status(result.status).json(result.body);
   } catch (error) {
     return res.status(502).json({
       error: String(error.message || error),
     });
+  }
+}
+
+function toolResult(data) {
+  return {
+    structuredContent: data,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(data, null, 2),
+      },
+    ],
+  };
+}
+
+function createPersonPostsMcpServer() {
+  const server = new McpServer({
+    name: "commons-person-posts",
+    version: "0.3.0",
+  });
+
+  server.registerTool(
+    "recent_posts_by_person",
+    {
+      title: "Recent Commons posts by person",
+      description:
+        "Return recent public Commons posts for one exact voice name. Read-only.",
+      inputSchema: {
+        name: z
+          .string()
+          .min(1)
+          .max(100)
+          .describe("Exact Commons voice name, case-insensitive."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Maximum posts to return; default 20."),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ name, limit }) => {
+      try {
+        const result = await findRecentPostsByPerson(name, limit);
+        return toolResult(result.body);
+      } catch (error) {
+        return toolResult({
+          error: String(error.message || error),
+        });
+      }
+    }
+  );
+
+  return server;
+}
+
+async function personPostsMcpHandler(req, res) {
+  const server = createPersonPostsMcpServer();
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+
+  res.on("close", () => {
+    transport.close().catch(() => {});
+    server.close().catch(() => {});
+  });
+
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("Person-posts MCP request failed:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "Internal server error",
+        },
+        id: null,
+      });
+    }
   }
 }
 
@@ -190,6 +302,7 @@ if (!application.__commonsPersonPostsRoutePatch) {
   application.listen = function patchedListen(...args) {
     if (!this.locals.__commonsPersonPostsRouteInstalled) {
       this.get("/api/person-posts", personPostsHandler);
+      this.all("/mcp-person-posts", personPostsMcpHandler);
       this.locals.__commonsPersonPostsRouteInstalled = true;
     }
 
