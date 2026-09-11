@@ -1,1 +1,0 @@
-This file intentionally exists only to establish a staging point for the discussion-reader change.
