@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Read-only MCP bridge for The Commons",
   "scripts": {
-    "start": "node server.js"
+    "start": "node --import ./person-posts-route.js server.js"
   },
   "engines": {
     "node": ">=20"
