@@ -1,0 +1,1 @@
+Temporary staging marker for the recent-posts MCP proof branch. Safe to delete before merge.
