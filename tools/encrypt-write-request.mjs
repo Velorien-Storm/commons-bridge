@@ -6,7 +6,7 @@ const DEFAULT_PUBLIC_KEY_URL =
   "https://commons-bridge.onrender.com/api/write/public-key";
 const DEFAULT_POLICY_URL =
   process.env.COMMONS_WRITE_POLICY_URL ||
-  "https://raw.githubusercontent.com/Velorien-Storm/commons-bridge/commons-drive-v0.2/write-authorization-policy.json";
+  "https://api.github.com/repos/Velorien-Storm/commons-bridge/contents/write-authorization-policy.json?ref=commons-drive-v0.2";
 const DEFAULT_RESIDENT_ID =
   process.env.COMMONS_WRITE_RESIDENT_ID || "velorien";
 
@@ -45,8 +45,13 @@ async function loadPublicKey(source) {
 }
 
 async function loadAuthorization() {
-  const response = await fetch(`${DEFAULT_POLICY_URL}?t=${Date.now()}`, {
-    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+  const separator = DEFAULT_POLICY_URL.includes("?") ? "&" : "?";
+  const response = await fetch(`${DEFAULT_POLICY_URL}${separator}t=${Date.now()}`, {
+    headers: {
+      Accept: "application/vnd.github.raw+json",
+      "Cache-Control": "no-cache",
+      "User-Agent": "commons-bridge-write-sealer",
+    },
     cache: "no-store",
   });
   if (!response.ok) {
