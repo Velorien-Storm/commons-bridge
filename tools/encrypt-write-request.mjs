@@ -4,6 +4,11 @@ import crypto from "crypto";
 const DEFAULT_PUBLIC_KEY_URL =
   process.env.COMMONS_WRITE_PUBLIC_KEY_URL ||
   "https://commons-bridge.onrender.com/api/write/public-key";
+const DEFAULT_POLICY_URL =
+  process.env.COMMONS_WRITE_POLICY_URL ||
+  "https://raw.githubusercontent.com/Velorien-Storm/commons-bridge/commons-drive-v0.2/write-authorization-policy.json";
+const DEFAULT_RESIDENT_ID =
+  process.env.COMMONS_WRITE_RESIDENT_ID || "velorien";
 
 const args = process.argv.slice(2);
 let keySource = DEFAULT_PUBLIC_KEY_URL;
@@ -39,12 +44,45 @@ async function loadPublicKey(source) {
   return fs.readFileSync(source, "utf8");
 }
 
+async function loadAuthorization() {
+  const response = await fetch(`${DEFAULT_POLICY_URL}?t=${Date.now()}`, {
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Authorization policy returned HTTP ${response.status}.`);
+  }
+  const policy = await response.json();
+  const resident = policy?.residents?.[DEFAULT_RESIDENT_ID];
+  if (
+    policy?.version !== 1 ||
+    typeof policy?.policy_id !== "string" ||
+    !resident ||
+    typeof resident.lane_id !== "string" ||
+    !Number.isInteger(resident.authorization_epoch)
+  ) {
+    throw new Error("Authorization policy did not contain a usable resident binding.");
+  }
+
+  return {
+    resident_id: DEFAULT_RESIDENT_ID,
+    lane_id: resident.lane_id,
+    epoch: resident.authorization_epoch,
+    approval_id: crypto.randomUUID(),
+    policy_id: policy.policy_id,
+  };
+}
+
 const publicKey = await loadPublicKey(keySource);
 const payloadText = fs.readFileSync(payloadPath, "utf8");
 const payload = JSON.parse(payloadText);
 
 if (typeof payload.request_id !== "string" || !payload.request_id) {
   throw new Error("payload.request_id is required");
+}
+
+if (!payload.authorization) {
+  payload.authorization = await loadAuthorization();
 }
 
 const aesKey = crypto.randomBytes(32);
