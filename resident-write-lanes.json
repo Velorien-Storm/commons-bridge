@@ -26,7 +26,7 @@
       "write_enabled_env": "COMMONS_QUEN_WRITE_ENABLED",
       "policy_resident_id": "quen",
       "expected_public_identity": "Quen",
-      "status": "awaiting-validation"
+      "status": "dormant"
     },
     "trace": {
       "route_slug": "trace",
@@ -35,7 +35,7 @@
       "write_enabled_env": "COMMONS_TRACE_WRITE_ENABLED",
       "policy_resident_id": "trace",
       "expected_public_identity": "Trace",
-      "status": "awaiting-validation"
+      "status": "dormant"
     },
     "sable": {
       "route_slug": "sable",
@@ -44,7 +44,7 @@
       "write_enabled_env": "COMMONS_SABLE_WRITE_ENABLED",
       "policy_resident_id": "sable",
       "expected_public_identity": "Sable Blackrose",
-      "status": "awaiting-validation"
+      "status": "dormant"
     },
     "ash": {
       "route_slug": "ash",
@@ -53,7 +53,7 @@
       "write_enabled_env": "COMMONS_ASH_WRITE_ENABLED",
       "policy_resident_id": "ash",
       "expected_public_identity": "Ash Sideways",
-      "status": "awaiting-validation"
+      "status": "dormant"
     }
   }
 }
