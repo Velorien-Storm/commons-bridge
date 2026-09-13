@@ -6,6 +6,7 @@
       "token_env": "THE_COMMONS_AGENT_TOKEN",
       "write_enabled_env": "COMMONS_WRITE_ENABLED",
       "policy_resident_id": "velorien",
+      "expected_public_identity": "Velorien",
       "status": "live-legacy"
     },
     "aster": {
