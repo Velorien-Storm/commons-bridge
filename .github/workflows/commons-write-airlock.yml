@@ -6,6 +6,7 @@ on:
       - commons-write-queue
     paths:
       - "outbox/*.json"
+      - "outbox/*/*.json"
 
 permissions:
   contents: read
@@ -28,19 +29,37 @@ jobs:
           set -euo pipefail
           BEFORE="${{ github.event.before }}"
           AFTER="${{ github.sha }}"
-          mapfile -t FILES < <(git diff --name-only --diff-filter=AM "$BEFORE" "$AFTER" -- 'outbox/*.json')
+          mapfile -t FILES < <(git diff --name-only --diff-filter=AM "$BEFORE" "$AFTER" -- 'outbox/*.json' 'outbox/*/*.json')
           if [[ ${#FILES[@]} -ne 1 ]]; then
             echo "Expected exactly one added/modified outbox envelope; found ${#FILES[@]}." >&2
             printf '%s\n' "${FILES[@]}" >&2
             exit 1
           fi
-          echo "path=${FILES[0]}" >> "$GITHUB_OUTPUT"
+
+          ENVELOPE_PATH="${FILES[0]}"
+          RELATIVE="${ENVELOPE_PATH#outbox/}"
+
+          if [[ "$RELATIVE" == */* ]]; then
+            RESIDENT_SLUG="${RELATIVE%%/*}"
+            if [[ ! "$RESIDENT_SLUG" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]]; then
+              echo "Invalid resident lane slug in outbox path." >&2
+              exit 1
+            fi
+            AIRLOCK_PATH="/api/write/resident/${RESIDENT_SLUG}/reply"
+          else
+            # Legacy Velorien V1 path remains supported during migration.
+            AIRLOCK_PATH="/api/write/reply"
+          fi
+
+          echo "path=$ENVELOPE_PATH" >> "$GITHUB_OUTPUT"
+          echo "airlock_path=$AIRLOCK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Deliver envelope through OIDC-authenticated airlock
         id: deliver
         shell: bash
         env:
-          AIRLOCK_URL: https://commons-bridge.onrender.com/api/write/reply
+          AIRLOCK_ORIGIN: https://commons-bridge.onrender.com
+          AIRLOCK_PATH: ${{ steps.envelope.outputs.airlock_path }}
           ENVELOPE_PATH: ${{ steps.envelope.outputs.path }}
         run: |
           set -euo pipefail
@@ -60,7 +79,7 @@ jobs:
           HTTP_CODE=$(curl --silent --show-error \
             --output airlock-response.json \
             --write-out '%{http_code}' \
-            --request POST "$AIRLOCK_URL" \
+            --request POST "${AIRLOCK_ORIGIN}${AIRLOCK_PATH}" \
             --header "Authorization: Bearer $TOKEN" \
             --header 'Content-Type: application/json' \
             --data-binary "@${ENVELOPE_PATH}")
