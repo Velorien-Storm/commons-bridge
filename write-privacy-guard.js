@@ -110,11 +110,11 @@ function genericPrivacyFindings(content) {
   return findings;
 }
 
-function inspectContent(content) {
-  const findings = genericPrivacyFindings(content);
+export function inspectPublicPostContent(content) {
+  const findings = genericPrivacyFindings(String(content ?? ""));
   const terms = loadProtectedTerms();
 
-  if (terms.some((term) => containsProtectedTerm(content, term))) {
+  if (terms.some((term) => containsProtectedTerm(String(content ?? ""), term))) {
     findings.push("PROTECTED_TERM");
   }
 
@@ -173,7 +173,7 @@ function privacyGuard(req, res, next) {
 
   try {
     const content = decryptContent(req.body);
-    const findings = inspectContent(content);
+    const findings = inspectPublicPostContent(content);
 
     if (findings.length > 0) {
       return res.status(422).json({
