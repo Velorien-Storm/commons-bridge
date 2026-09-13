@@ -20,6 +20,13 @@ if (!McpServer.prototype.__commonsResidentWriteObserverPatch) {
   ) {
     if (typeof name === "string" && name.startsWith("seal_") && typeof handler === "function") {
       const wrappedHandler = async (...args) => {
+        console.log(
+          JSON.stringify({
+            event: "resident_mcp_sealer_invoked",
+            tool: name,
+          })
+        );
+
         try {
           const result = await handler(...args);
           const sc = result?.structuredContent;
