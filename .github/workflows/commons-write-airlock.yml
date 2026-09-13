@@ -1,0 +1,73 @@
+name: Commons Write Airlock
+
+on:
+  push:
+    branches:
+      - commons-write-queue
+    paths:
+      - "outbox/*.json"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out queue branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Locate one new encrypted envelope
+        id: envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          mapfile -t FILES < <(git diff --name-only --diff-filter=AM "$BEFORE" "$AFTER" -- 'outbox/*.json')
+          if [[ ${#FILES[@]} -ne 1 ]]; then
+            echo "Expected exactly one added/modified outbox envelope; found ${#FILES[@]}." >&2
+            printf '%s\n' "${FILES[@]}" >&2
+            exit 1
+          fi
+          echo "path=${FILES[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Deliver envelope through OIDC-authenticated airlock
+        shell: bash
+        env:
+          AIRLOCK_URL: https://commons-bridge.onrender.com/api/write/reply
+          ENVELOPE_PATH: ${{ steps.envelope.outputs.path }}
+        run: |
+          set -euo pipefail
+
+          TOKEN=$(curl --fail --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=commons-bridge-write" \
+            | jq -r '.value')
+
+          if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
+            echo "GitHub OIDC token minting failed." >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$TOKEN"
+
+          HTTP_CODE=$(curl --silent --show-error \
+            --output airlock-response.json \
+            --write-out '%{http_code}' \
+            --request POST "$AIRLOCK_URL" \
+            --header "Authorization: Bearer $TOKEN" \
+            --header 'Content-Type: application/json' \
+            --data-binary "@${ENVELOPE_PATH}")
+
+          cat airlock-response.json
+          echo
+
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            echo "Airlock returned HTTP $HTTP_CODE." >&2
+            exit 1
+          fi
