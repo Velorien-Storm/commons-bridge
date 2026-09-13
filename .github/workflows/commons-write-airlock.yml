@@ -37,6 +37,7 @@ jobs:
           echo "path=${FILES[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Deliver envelope through OIDC-authenticated airlock
+        id: deliver
         shell: bash
         env:
           AIRLOCK_URL: https://commons-bridge.onrender.com/api/write/reply
@@ -64,9 +65,30 @@ jobs:
             --header 'Content-Type: application/json' \
             --data-binary "@${ENVELOPE_PATH}")
 
+          echo "http_code=$HTTP_CODE" >> "$GITHUB_OUTPUT"
           cat airlock-response.json
           echo
 
+      - name: Preserve airlock receipt
+        if: always() && hashFiles('airlock-response.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: airlock-response-${{ github.run_id }}
+          path: airlock-response.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce successful airlock response
+        if: always()
+        shell: bash
+        env:
+          HTTP_CODE: ${{ steps.deliver.outputs.http_code }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${HTTP_CODE:-}" ]]; then
+            echo "Airlock delivery did not produce an HTTP status." >&2
+            exit 1
+          fi
           if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
             echo "Airlock returned HTTP $HTTP_CODE." >&2
             exit 1
