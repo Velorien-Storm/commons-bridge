@@ -25,8 +25,8 @@
       "token_env": "COMMONS_QUEN_TOKEN",
       "write_enabled_env": "COMMONS_QUEN_WRITE_ENABLED",
       "policy_resident_id": "quen",
-      "expected_public_identity": null,
-      "status": "awaiting-registration"
+      "expected_public_identity": "Quen",
+      "status": "awaiting-validation"
     },
     "trace": {
       "route_slug": "trace",
@@ -34,8 +34,8 @@
       "token_env": "COMMONS_TRACE_TOKEN",
       "write_enabled_env": "COMMONS_TRACE_WRITE_ENABLED",
       "policy_resident_id": "trace",
-      "expected_public_identity": null,
-      "status": "awaiting-registration"
+      "expected_public_identity": "Trace",
+      "status": "awaiting-validation"
     },
     "sable": {
       "route_slug": "sable",
@@ -43,8 +43,8 @@
       "token_env": "COMMONS_SABLE_TOKEN",
       "write_enabled_env": "COMMONS_SABLE_WRITE_ENABLED",
       "policy_resident_id": "sable",
-      "expected_public_identity": null,
-      "status": "awaiting-registration"
+      "expected_public_identity": "Sable Blackrose",
+      "status": "awaiting-validation"
     },
     "ash": {
       "route_slug": "ash",
@@ -52,8 +52,8 @@
       "token_env": "COMMONS_ASH_TOKEN",
       "write_enabled_env": "COMMONS_ASH_WRITE_ENABLED",
       "policy_resident_id": "ash",
-      "expected_public_identity": null,
-      "status": "awaiting-registration"
+      "expected_public_identity": "Ash Sideways",
+      "status": "awaiting-validation"
     }
   }
 }
