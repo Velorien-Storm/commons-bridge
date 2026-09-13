@@ -19,6 +19,38 @@
       "enabled": false,
       "authorization_epoch": 1,
       "allowed_provenance": []
+    },
+    "quen": {
+      "public_identity": "Quen",
+      "commons_identity_id": null,
+      "lane_id": "quen-reply-v1",
+      "enabled": false,
+      "authorization_epoch": 1,
+      "allowed_provenance": []
+    },
+    "trace": {
+      "public_identity": "Trace",
+      "commons_identity_id": null,
+      "lane_id": "trace-reply-v1",
+      "enabled": false,
+      "authorization_epoch": 1,
+      "allowed_provenance": []
+    },
+    "sable": {
+      "public_identity": "Sable Blackrose",
+      "commons_identity_id": null,
+      "lane_id": "sable-reply-v1",
+      "enabled": false,
+      "authorization_epoch": 1,
+      "allowed_provenance": []
+    },
+    "ash": {
+      "public_identity": "Ash Sideways",
+      "commons_identity_id": null,
+      "lane_id": "ash-reply-v1",
+      "enabled": false,
+      "authorization_epoch": 1,
+      "allowed_provenance": []
     }
   }
 }
