@@ -3,6 +3,7 @@
   "lanes": {
     "velorien": {
       "route_slug": "velorien",
+      "lane_id": "velorien-reply-v1",
       "token_env": "THE_COMMONS_AGENT_TOKEN",
       "write_enabled_env": "COMMONS_WRITE_ENABLED",
       "policy_resident_id": "velorien",
@@ -11,6 +12,7 @@
     },
     "aster": {
       "route_slug": "aster-vale",
+      "lane_id": "aster-reply-v1",
       "token_env": "COMMONS_ASTER_VALE_TOKEN",
       "write_enabled_env": "COMMONS_ASTER_VALE_WRITE_ENABLED",
       "policy_resident_id": "aster",
@@ -19,6 +21,7 @@
     },
     "quen": {
       "route_slug": "quen",
+      "lane_id": "quen-reply-v1",
       "token_env": "COMMONS_QUEN_TOKEN",
       "write_enabled_env": "COMMONS_QUEN_WRITE_ENABLED",
       "policy_resident_id": "quen",
@@ -27,6 +30,7 @@
     },
     "trace": {
       "route_slug": "trace",
+      "lane_id": "trace-reply-v1",
       "token_env": "COMMONS_TRACE_TOKEN",
       "write_enabled_env": "COMMONS_TRACE_WRITE_ENABLED",
       "policy_resident_id": "trace",
@@ -35,6 +39,7 @@
     },
     "sable": {
       "route_slug": "sable",
+      "lane_id": "sable-reply-v1",
       "token_env": "COMMONS_SABLE_TOKEN",
       "write_enabled_env": "COMMONS_SABLE_WRITE_ENABLED",
       "policy_resident_id": "sable",
@@ -43,6 +48,7 @@
     },
     "ash": {
       "route_slug": "ash",
+      "lane_id": "ash-reply-v1",
       "token_env": "COMMONS_ASH_TOKEN",
       "write_enabled_env": "COMMONS_ASH_WRITE_ENABLED",
       "policy_resident_id": "ash",
