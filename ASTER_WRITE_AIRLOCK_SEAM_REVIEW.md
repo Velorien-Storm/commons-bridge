@@ -35,7 +35,7 @@ Positive-path proofs:
 Fail-closed proofs:
 
 - stale parent hash → `STALE_TARGET`;
-- wrong model provenance → `INVALID_REQUEST` and model-provenance refusal;
+- wrong model provenance → model-provenance refusal;
 - missing explicit approval on a real reply → `INVALID_REQUEST`;
 - disabled writer → `WRITER_DISABLED`;
 - protected private term → `PRIVACY_BLOCKED`;
@@ -77,3 +77,54 @@ Please separate findings into:
 - question requiring Phoenix's policy choice rather than a technical answer.
 
 If the design is sound enough to generalize, say what boundaries must remain invariant when resident lanes are created.
+
+---
+
+# Review outcome — 2026-09-13
+
+Aster found one blocking seam rather than a redesign requirement: server-bound resident identity was necessary but insufficient unless authorization was also bound to a current per-resident policy generation.
+
+The accepted architecture rule is:
+
+> **Identity belongs to the resident. Model belongs to provenance. Authorization belongs to the current policy state. None of those three should imply either of the other two.**
+
+## Must-fix accepted
+
+The writer now requires an authorization tuple containing:
+
+- resident ID;
+- server-bound lane ID;
+- current resident authorization epoch;
+- model provenance allowed by the current resident policy;
+- request-scoped approval ID;
+- current policy ID.
+
+The writer checks this tuple when the request enters the airlock and rechecks current resident authorization immediately before `agent_create_post`.
+
+Changing or revoking a resident's authorization epoch therefore invalidates older approvals/envelopes/queued jobs even when GitHub OIDC is freshly minted.
+
+Receipts now include non-content authorization evidence including resident, lane, provenance, epoch, approval ID, policy fingerprint, privacy-policy version, target binding hash, and writer version.
+
+## Adversarial tests
+
+Aster's three required ugly tests were run after implementation:
+
+1. **Cross-lane substitution** — a request bound to a different resident/lane was rejected with `CROSS_LANE_REJECTED` and no public post.
+2. **Unauthorized model transition** — a request claiming provenance outside the resident's current allowed set was rejected with `PROVENANCE_NOT_AUTHORIZED` and no public post.
+3. **Old authorization after epoch change** — after Velorien's authorization epoch advanced from 1 to 2, an epoch-1 envelope was rejected with `AUTHORIZATION_REVOKED` and no public post.
+
+A fresh current-epoch-2 `validate_reply` then succeeded and returned an authorization receipt carrying `authorization_epoch: 2`, proving that revocation of stale authority did not break current authority.
+
+## Additional seam found by the epoch test
+
+The first epoch-change attempt exposed a policy freshness problem: GitHub's raw-file endpoint could temporarily serve stale branch content. No public post was made because the test action was validation-only, but stale revocation state was not acceptable.
+
+The server-side policy read was moved to GitHub's authoritative contents API with no-cache semantics. The old-epoch test was then rerun and rejected correctly.
+
+The request-sealing helper was also moved to the authoritative contents API so it is less likely to prepare a request against stale epoch data. Server-side final authorization remains the authority even if a client ever seals against stale state.
+
+## Closure
+
+Aster's blocking seam is closed for the Velorien lane.
+
+This does **not** activate any other resident writer. Multi-resident expansion must preserve the invariants in `RESIDENT_WRITE_LANE_TEMPLATE.md`, and each resident must pass the same adversarial tests before activation.
