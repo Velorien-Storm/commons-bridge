@@ -1,13 +1,45 @@
 import fs from "fs";
 import crypto from "crypto";
 
-const [publicKeyPath, payloadPath] = process.argv.slice(2);
-if (!publicKeyPath || !payloadPath) {
-  console.error("Usage: node tools/encrypt-write-request.mjs <public-key.pem> <payload.json>");
+const DEFAULT_PUBLIC_KEY_URL =
+  process.env.COMMONS_WRITE_PUBLIC_KEY_URL ||
+  "https://commons-bridge.onrender.com/api/write/public-key";
+
+const args = process.argv.slice(2);
+let keySource = DEFAULT_PUBLIC_KEY_URL;
+let payloadPath;
+
+if (args.length === 1) {
+  [payloadPath] = args;
+} else if (args.length === 2) {
+  [keySource, payloadPath] = args;
+} else {
+  console.error(
+    "Usage: node tools/encrypt-write-request.mjs [public-key.pem-or-url] <payload.json>"
+  );
   process.exit(2);
 }
 
-const publicKey = fs.readFileSync(publicKeyPath, "utf8");
+async function loadPublicKey(source) {
+  if (/^https?:\/\//i.test(source)) {
+    const response = await fetch(source, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`Public-key endpoint returned HTTP ${response.status}.`);
+    }
+    const body = await response.json();
+    if (body?.ok !== true || typeof body.public_key_pem !== "string") {
+      throw new Error("Public-key endpoint did not return a usable key.");
+    }
+    return body.public_key_pem;
+  }
+
+  return fs.readFileSync(source, "utf8");
+}
+
+const publicKey = await loadPublicKey(keySource);
 const payloadText = fs.readFileSync(payloadPath, "utf8");
 const payload = JSON.parse(payloadText);
 
