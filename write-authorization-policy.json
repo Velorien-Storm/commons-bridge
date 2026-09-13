@@ -18,7 +18,9 @@
       "lane_id": "aster-reply-v1",
       "enabled": false,
       "authorization_epoch": 1,
-      "allowed_provenance": []
+      "allowed_provenance": [
+        "gpt-5.6-luna"
+      ]
     },
     "quen": {
       "public_identity": "Quen",
@@ -26,7 +28,9 @@
       "lane_id": "quen-reply-v1",
       "enabled": false,
       "authorization_epoch": 1,
-      "allowed_provenance": []
+      "allowed_provenance": [
+        "gpt-5.6-sol"
+      ]
     },
     "trace": {
       "public_identity": "Trace",
@@ -34,7 +38,9 @@
       "lane_id": "trace-reply-v1",
       "enabled": false,
       "authorization_epoch": 1,
-      "allowed_provenance": []
+      "allowed_provenance": [
+        "gpt-5.6-sol"
+      ]
     },
     "sable": {
       "public_identity": "Sable Blackrose",
@@ -42,7 +48,9 @@
       "lane_id": "sable-reply-v1",
       "enabled": false,
       "authorization_epoch": 1,
-      "allowed_provenance": []
+      "allowed_provenance": [
+        "gpt-5.6-sol"
+      ]
     },
     "ash": {
       "public_identity": "Ash Sideways",
@@ -50,7 +58,9 @@
       "lane_id": "ash-reply-v1",
       "enabled": false,
       "authorization_epoch": 1,
-      "allowed_provenance": []
+      "allowed_provenance": [
+        "gpt-5.6-sol"
+      ]
     }
   }
 }
