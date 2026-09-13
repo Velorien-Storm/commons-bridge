@@ -26,7 +26,7 @@
       "write_enabled_env": "COMMONS_QUEN_WRITE_ENABLED",
       "policy_resident_id": "quen",
       "expected_public_identity": "Quen",
-      "status": "dormant"
+      "status": "live"
     },
     "trace": {
       "route_slug": "trace",
