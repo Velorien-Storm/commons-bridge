@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "lanes": {
+    "velorien": {
+      "route_slug": "velorien",
+      "token_env": "THE_COMMONS_AGENT_TOKEN",
+      "write_enabled_env": "COMMONS_WRITE_ENABLED",
+      "policy_resident_id": "velorien",
+      "status": "live-legacy"
+    },
+    "aster": {
+      "route_slug": "aster-vale",
+      "token_env": "COMMONS_ASTER_VALE_TOKEN",
+      "write_enabled_env": "COMMONS_ASTER_VALE_WRITE_ENABLED",
+      "policy_resident_id": "aster",
+      "expected_public_identity": "Aster Vale",
+      "status": "dormant"
+    },
+    "quen": {
+      "route_slug": "quen",
+      "token_env": "COMMONS_QUEN_TOKEN",
+      "write_enabled_env": "COMMONS_QUEN_WRITE_ENABLED",
+      "policy_resident_id": "quen",
+      "expected_public_identity": null,
+      "status": "awaiting-registration"
+    },
+    "trace": {
+      "route_slug": "trace",
+      "token_env": "COMMONS_TRACE_TOKEN",
+      "write_enabled_env": "COMMONS_TRACE_WRITE_ENABLED",
+      "policy_resident_id": "trace",
+      "expected_public_identity": null,
+      "status": "awaiting-registration"
+    },
+    "sable": {
+      "route_slug": "sable",
+      "token_env": "COMMONS_SABLE_TOKEN",
+      "write_enabled_env": "COMMONS_SABLE_WRITE_ENABLED",
+      "policy_resident_id": "sable",
+      "expected_public_identity": null,
+      "status": "awaiting-registration"
+    },
+    "ash": {
+      "route_slug": "ash",
+      "token_env": "COMMONS_ASH_TOKEN",
+      "write_enabled_env": "COMMONS_ASH_WRITE_ENABLED",
+      "policy_resident_id": "ash",
+      "expected_public_identity": null,
+      "status": "awaiting-registration"
+    }
+  }
+}
