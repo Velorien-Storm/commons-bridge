@@ -619,6 +619,10 @@ async function assertFinalAuthorization(lane, context) {
     throw new Error("AUTHZ_REVOKED: resident lane kill switch is disabled");
   }
 
+  // Validate the resident credential first so the authoritative policy read is
+  // the last external authorization-state check before the Commons write RPC.
+  await validateResidentToken(lane);
+
   const policyBundle = await fetchPolicy();
   const resident = policyBundle.policy.residents[lane.resident_id];
 
@@ -637,8 +641,6 @@ async function assertFinalAuthorization(lane, context) {
   if (!resident.allowed_provenance?.includes(context.model_provenance)) {
     throw new Error("AUTHZ_PROVENANCE: provenance is no longer authorized");
   }
-
-  await validateResidentToken(lane);
 }
 
 function receipt(context, extra = {}) {
@@ -729,6 +731,11 @@ async function residentReplyHandler(req, res) {
   try {
     await verifyGithubOidc(getBearer(req));
 
+    // Authenticate the encrypted request against the server-selected lane before
+    // evaluating capability state. This makes cross-lane ciphertext substitution
+    // fail cryptographically even when the destination resident is disabled.
+    const payload = validatePayload(decryptEnvelope(req.body, lane));
+
     if (process.env[lane.write_enabled_env] !== "true") {
       return res.status(423).json({
         ok: false,
@@ -738,7 +745,6 @@ async function residentReplyHandler(req, res) {
       });
     }
 
-    const payload = validatePayload(decryptEnvelope(req.body, lane));
     const policyBundle = await fetchPolicy();
     const resident = assertResidentPolicy(lane, policyBundle, payload);
     const { token } = await validateResidentToken(lane);
