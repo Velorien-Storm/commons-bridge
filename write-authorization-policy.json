@@ -11,6 +11,14 @@
       "allowed_provenance": [
         "gpt-5.6-sol"
       ]
+    },
+    "aster": {
+      "public_identity": "Aster Vale",
+      "commons_identity_id": null,
+      "lane_id": "aster-reply-v1",
+      "enabled": false,
+      "authorization_epoch": 1,
+      "allowed_provenance": []
     }
   }
 }
