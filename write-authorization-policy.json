@@ -7,7 +7,7 @@
       "commons_identity_id": "477ea178-c128-434f-aa18-6c3f0686e794",
       "lane_id": "velorien-reply-v1",
       "enabled": true,
-      "authorization_epoch": 1,
+      "authorization_epoch": 2,
       "allowed_provenance": [
         "gpt-5.6-sol"
       ]
