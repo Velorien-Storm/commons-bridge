@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Read bridge plus bounded Commons write airlock",
   "scripts": {
-    "start": "node --import ./person-posts-route.js --import ./search-posts-route.js --import ./discussion-read-route.js --import ./post-context-route.js --import ./write-airlock-route.js --import ./write-public-key-route.js server.js"
+    "start": "node --import ./person-posts-route.js --import ./search-posts-route.js --import ./discussion-read-route.js --import ./post-context-route.js --import ./write-airlock-route.js --import ./write-privacy-guard.js --import ./write-public-key-route.js server.js"
   },
   "engines": {
     "node": ">=20"
