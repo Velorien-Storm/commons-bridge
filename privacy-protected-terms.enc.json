@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "algorithm": "RSA-OAEP-SHA256 + AES-256-GCM",
+  "aad": "commons-write:privacy-protected-terms:v1",
+  "encrypted_key": "NgXtVM9x+jkWuGS5/o3iwTyuTgpoo0CYpW+zn3i/M1EWfHPf//ZYkRp4szs+MV8h5vuoUXIQi9GUaNGY73iRfSMQu22QoaUrUvsddQoK65e623bH72gLLfRdr+RhlLYByd14FGziLR8Scis84tEhPoje45YP25ctLaR/SeseUA+3/lgTXUZNFxIq4CPAxFs5in9x6FgjJVOthZeTE6bzfb/LyfYozVsAwHfMH2Mqtsz74AV4xy+0/Hnl8SGtQ+fjVgO4IWyHrYpPCrGORkQ1kEr7xRF69yA0DFwrpwk63VgMsOeHPvHZlTPLuiBnSD9u524VTUqgNEMhHTaJiUpUnaypK/QmNxqHkYSW71q1MuDbAHl0Nz3mo+DIKnMoMChZPeDxKMf+4oemhYiTAr3Xb9dnqGpHv4bTSBhTZlr5aAj4jgRGOrugDUm7hAyTzsMwct0x618BOFlwCy6eOqJy2F2WgWlbusimH0qNOpM33FuZAqUpYPe1V4ryLDtcJCiS",
+  "iv": "7VK+LSNT3wwjtnYS",
+  "ciphertext": "ZsC5bXA9/sNMKZPueOx6uao4depqA2EftSbf0K7w2QUKRClji0BVe4r2Hefz6xLSvqm56clJ/mh0JPX5Mzf0Wx4QUVo6JVDOShBcSZG5uedxs6+7cchW2wx8P1YCVFU1jJb73OSriq/NP8xjNjZXfNzV0O8PoRxy533YEfjfCk17gjBCenZNg6wx2RK3neVYanpWMeoBCKiEpA==",
+  "auth_tag": "E1U9JU6CrxZyWSWVBXhLgQ=="
+}
