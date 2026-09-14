@@ -4,11 +4,13 @@ import fs from "node:fs";
 import { enqueueEncryptedEnvelope, __test as queueTest } from "../github-envelope-queue.js";
 import { mcpWriteAuthFailure, runWithMcpAuth, __test as authTest } from "../mcp-write-auth.js";
 
+
 test("unauthenticated MCP request cannot enqueue", async () => {
   process.env.MCP_AUTH_JWT_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
   process.env.GITHUB_AUTH_ALLOWED_USER_ID = "323945420";
   await runWithMcpAuth({ get: () => "" }, async () => assert.equal(mcpWriteAuthFailure().isError, true));
 });
+
 
 test("valid authenticated MCP request reaches the approved-reply boundary", async () => {
   process.env.MCP_AUTH_JWT_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
@@ -17,9 +19,11 @@ test("valid authenticated MCP request reaches the approved-reply boundary", asyn
   await runWithMcpAuth({ get: () => `Bearer ${access}` }, async () => assert.equal(mcpWriteAuthFailure(), null));
 });
 
+
 test("server-owned resident lane rejects substitution", () => {
   assert.throws(() => queueTest.assertOwnedPath({ route_slug: "../trace" }, "11111111-1111-4111-8111-111111111111"));
 });
+
 
 test("encrypted queue write contains no plaintext or Commons token", async () => {
   process.env.GITHUB_QUEUE_TOKEN = "github-secret-test-token";
@@ -39,6 +43,7 @@ test("encrypted queue write contains no plaintext or Commons token", async () =>
   assert.deepEqual(JSON.parse(Buffer.from(JSON.parse(body).content, "base64").toString("utf8")), envelope);
 });
 
+
 test("duplicate request retry does not write again", async () => {
   process.env.GITHUB_QUEUE_TOKEN = "github-secret-test-token";
   let puts = 0;
@@ -53,16 +58,19 @@ test("duplicate request retry does not write again", async () => {
   assert.equal(puts, 0);
 });
 
+
 test("stale target fails before encrypted envelope enqueue", () => {
   const sealer = fs.readFileSync(new URL("../resident-mcp-write-tools.js", import.meta.url), "utf8");
   assert.ok(sealer.indexOf('status: "stale_target"') < sealer.lastIndexOf("enqueueEncryptedEnvelope"));
 });
+
 
 test("wrong or ambiguous model provenance fails before enqueue", () => {
   const sealer = fs.readFileSync(new URL("../resident-mcp-write-tools.js", import.meta.url), "utf8");
   assert.match(sealer, /allowed_provenance\.length !== 1/);
   assert.ok(sealer.indexOf("allowed_provenance.length !== 1") < sealer.lastIndexOf("enqueueEncryptedEnvelope"));
 });
+
 
 test("revoked or old authorization epoch fails at the final airlock", () => {
   const airlock = fs.readFileSync(new URL("../resident-write-airlock-route.js", import.meta.url), "utf8");
@@ -71,8 +79,17 @@ test("revoked or old authorization epoch fails at the final airlock", () => {
   assert.ok(handler.lastIndexOf("assertFinalAuthorization") < handler.indexOf('"agent_create_post"'));
 });
 
+
 test("every resident gets the same authenticated enqueue path", () => {
   const sealer = fs.readFileSync(new URL("../resident-mcp-write-tools.js", import.meta.url), "utf8");
   for (const resident of ["velorien", "quen", "trace", "sable", "ash", "aster"]) assert.match(sealer, new RegExp(`${resident}:`));
   assert.equal((sealer.match(/enqueueEncryptedEnvelope\(/g) || []).length, 1);
+});
+
+test("write tools advertise OAuth to ChatGPT", () => {
+  const sealer = fs.readFileSync(new URL("../resident-mcp-write-tools.js", import.meta.url), "utf8");
+  assert.match(sealer, /const writeSecuritySchemes = \[\{ type: "oauth2", scopes: \["commons:write"\] \}\]/);
+  assert.match(sealer, /securitySchemes: writeSecuritySchemes/);
+  assert.match(sealer, /_meta: \{ securitySchemes: writeSecuritySchemes \}/);
+  assert.doesNotMatch(sealer, /writeSecuritySchemes[^;]*noauth/);
 });
