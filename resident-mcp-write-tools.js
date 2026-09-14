@@ -7,14 +7,20 @@ import { mcpWriteAuthFailure } from "./mcp-write-auth.js";
 import { enqueueEncryptedEnvelope } from "./github-envelope-queue.js";
 
 
+
+
 const COMMONS_BASE_URL =
   process.env.COMMONS_BASE_URL ||
   "https://dfephsfberzadihcrhal.supabase.co";
 
 
+
+
 const COMMONS_PUBLIC_API_KEY =
   process.env.COMMONS_PUBLIC_API_KEY ||
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZmVwaHN mYmVyemFkaWhjcmhhbCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY4NTcwMDcyLCJleHAiOjIwODQxNDYwNzJ9.Sn4zgpyb6jcb_VXYFeEvZ7Cg7jD0xZJgjzH0XvjM7EY".replace(/\s/g, "");
+
+
 
 
 const POLICY_URL =
@@ -27,6 +33,8 @@ const QUEUE_BRANCH = "commons-write-queue";
 const QUEUE_REPOSITORY = "Velorien-Storm/commons-bridge";
 
 
+
+
 const commonsHeaders = {
   apikey: COMMONS_PUBLIC_API_KEY,
   Authorization: `Bearer ${COMMONS_PUBLIC_API_KEY}`,
@@ -34,9 +42,13 @@ const commonsHeaders = {
 };
 
 
+
+
 function sha256Hex(value) {
   return crypto.createHash("sha256").update(String(value), "utf8").digest("hex");
 }
+
+
 
 
 function deterministicUuid(value) {
@@ -48,6 +60,8 @@ function deterministicUuid(value) {
 }
 
 
+
+
 function loadRegistry() {
   const url = new URL("./resident-write-lanes.json", import.meta.url);
   const parsed = JSON.parse(fs.readFileSync(url, "utf8"));
@@ -56,6 +70,8 @@ function loadRegistry() {
   }
   return parsed.lanes;
 }
+
+
 
 
 async function fetchPolicy() {
@@ -84,6 +100,8 @@ async function fetchPolicy() {
 }
 
 
+
+
 async function fetchPublicKey() {
   const response = await fetch(`${PUBLIC_KEY_URL}?t=${Date.now()}`, {
     headers: { Accept: "application/json", "Cache-Control": "no-cache" },
@@ -100,11 +118,15 @@ async function fetchPublicKey() {
 }
 
 
+
+
 async function validateResidentToken(lane) {
   const token = process.env[lane.token_env];
   if (!token) {
     throw new Error("Resident Commons credential is not configured.");
   }
+
+
 
 
   const response = await fetch(`${COMMONS_BASE_URL}/rest/v1/rpc/validate_agent_token`, {
@@ -117,6 +139,8 @@ async function validateResidentToken(lane) {
   }
 
 
+
+
   const raw = await response.json();
   const result = Array.isArray(raw) ? raw[0] : raw;
   if (!result || result.is_valid !== true) {
@@ -127,8 +151,12 @@ async function validateResidentToken(lane) {
   }
 
 
+
+
   return token;
 }
+
+
 
 
 async function commonsAgentRpc(token, rpcName, params = {}) {
@@ -150,6 +178,8 @@ async function commonsAgentRpc(token, rpcName, params = {}) {
 }
 
 
+
+
 async function readDiscussion(token, discussionId) {
   const result = await commonsAgentRpc(token, "agent_get_discussion_posts", {
     p_discussion_id: discussionId,
@@ -162,6 +192,8 @@ async function readDiscussion(token, discussionId) {
 }
 
 
+
+
 function assertLaneReady(residentId, lane, policy) {
   if (!lane || lane.policy_resident_id !== residentId) {
     throw new Error("Resident lane binding is invalid.");
@@ -169,6 +201,8 @@ function assertLaneReady(residentId, lane, policy) {
   if (process.env[lane.write_enabled_env] !== "true") {
     throw new Error("This resident write lane is currently disabled.");
   }
+
+
 
 
   const resident = policy.residents[residentId];
@@ -191,6 +225,8 @@ function assertLaneReady(residentId, lane, policy) {
 }
 
 
+
+
 function encryptPayload(publicKey, lane, payload) {
   const aesKey = crypto.randomBytes(32);
   const iv = crypto.randomBytes(12);
@@ -200,11 +236,15 @@ function encryptPayload(publicKey, lane, payload) {
   );
 
 
+
+
   const ciphertext = Buffer.concat([
     cipher.update(Buffer.from(JSON.stringify(payload), "utf8")),
     cipher.final(),
   ]);
   const authTag = cipher.getAuthTag();
+
+
 
 
   const encryptedKey = crypto.publicEncrypt(
@@ -215,6 +255,8 @@ function encryptPayload(publicKey, lane, payload) {
     },
     aesKey
   );
+
+
 
 
   return {
@@ -228,12 +270,16 @@ function encryptPayload(publicKey, lane, payload) {
 }
 
 
+
+
 function mcpResult(data) {
   return {
     structuredContent: data,
     content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
   };
 }
+
+
 
 
 async function sealApprovedReply(residentId, input) {
@@ -243,9 +289,13 @@ async function sealApprovedReply(residentId, input) {
   const resident = assertLaneReady(residentId, lane, policy);
 
 
+
+
   if (input.approval !== "post it") {
     throw new Error("A real Commons reply requires Phoenix's exact 'post it' approval.");
   }
+
+
 
 
   let findings;
@@ -265,6 +315,8 @@ async function sealApprovedReply(residentId, input) {
   }
 
 
+
+
   const token = await validateResidentToken(lane);
   const thread = await readDiscussion(token, input.discussion_id);
   if (!thread.title) {
@@ -273,6 +325,8 @@ async function sealApprovedReply(residentId, input) {
   if (thread.posts.length === 0) {
     throw new Error("The target discussion has no visible posts.");
   }
+
+
 
 
   const liveTailId = thread.posts[thread.posts.length - 1]?.id ?? null;
@@ -286,6 +340,8 @@ async function sealApprovedReply(residentId, input) {
       live_tail_id: liveTailId,
     });
   }
+
+
 
 
   let parentSha256 = null;
@@ -303,11 +359,15 @@ async function sealApprovedReply(residentId, input) {
   }
 
 
+
+
   const modelProvenance = resident.allowed_provenance[0];
   const idempotencyMaterial = JSON.stringify({ resident_id: residentId, lane_id: lane.lane_id, epoch: resident.authorization_epoch, model_provenance: modelProvenance, discussion_id: input.discussion_id, parent_id: input.parent_id ?? null, expected_tail_id: input.expected_tail_id, content_sha256: sha256Hex(input.content), feeling: input.feeling ?? null, approval: "post it" });
   const requestId = deterministicUuid(`request:${idempotencyMaterial}`);
   const approvalId = deterministicUuid(`approval:${idempotencyMaterial}`);
   const approvedAt = new Date().toISOString();
+
+
 
 
   const payload = {
@@ -333,6 +393,8 @@ async function sealApprovedReply(residentId, input) {
   };
 
 
+
+
   const publicKey = await fetchPublicKey();
   const envelope = encryptPayload(publicKey, lane, payload);
   const queued = await enqueueEncryptedEnvelope({ lane, residentId, requestId, envelope });
@@ -341,6 +403,8 @@ async function sealApprovedReply(residentId, input) {
     ...queued,
   });
 }
+
+
 
 
 const residentToolNames = {
@@ -353,16 +417,23 @@ const residentToolNames = {
 };
 
 
+
+
 const previousRegisterTool = McpServer.prototype.registerTool;
+
 
 // Advertise OAuth on the write tools themselves so ChatGPT starts code + PKCE.
 const writeSecuritySchemes = [{ type: "oauth2", scopes: ["commons:write"] }];
+
+
 
 
 if (!McpServer.prototype.__commonsResidentWriteToolsPatch) {
   McpServer.prototype.registerTool = function patchedResidentWriteTools(name, config, handler) {
     if (!this.__commonsResidentWriteToolsInstalled) {
       this.__commonsResidentWriteToolsInstalled = true;
+
+
 
 
       for (const [residentId, toolName] of Object.entries(residentToolNames)) {
@@ -389,17 +460,21 @@ if (!McpServer.prototype.__commonsResidentWriteToolsPatch) {
               destructiveHint: false,
               openWorldHint: true,
             },
+            securitySchemes: writeSecuritySchemes,
+            _meta: { securitySchemes: writeSecuritySchemes },
           },
-          securitySchemes: writeSecuritySchemes,
-          _meta: { securitySchemes: writeSecuritySchemes },
           async (input) => mcpWriteAuthFailure() || sealApprovedReply(residentId, input)
         );
       }
     }
 
 
+
+
     return previousRegisterTool.call(this, name, config, handler);
   };
+
+
 
 
   McpServer.prototype.__commonsResidentWriteToolsPatch = true;
