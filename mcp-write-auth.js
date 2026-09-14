@@ -2,19 +2,23 @@ import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import express from "express";
 
+
 const ORIGIN = "https://commons-bridge.onrender.com";
 const WRITE_SCOPE = "commons:write";
 const authContext = new AsyncLocalStorage();
 const pendingCodes = new Map();
 
+
 const b64url = (value) => Buffer.from(value).toString("base64url");
 const fromB64url = (value) => Buffer.from(value, "base64url").toString("utf8");
+
 
 function secret() {
   const value = process.env.MCP_AUTH_JWT_SECRET;
   if (!value || value.length < 32) throw new Error("MCP OAuth signing secret is unavailable.");
   return value;
 }
+
 
 function signJwt(payload, lifetimeSeconds) {
   const now = Math.floor(Date.now() / 1000);
@@ -23,6 +27,7 @@ function signJwt(payload, lifetimeSeconds) {
   const signature = crypto.createHmac("sha256", secret()).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
+
 
 function verifyJwt(token, expectedType) {
   const parts = String(token || "").split(".");
@@ -38,17 +43,21 @@ function verifyJwt(token, expectedType) {
   return payload;
 }
 
+
 function allowedClient(value) {
   return value === "https://chatgpt.com/oauth/client.json" || /^https:\/\/chatgpt\.com\/oauth\/[A-Za-z0-9_-]+\/client\.json$/.test(value);
 }
+
 
 function allowedRedirect(value) {
   return value === "https://chatgpt.com/connector_platform_oauth_redirect" || /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/.test(value);
 }
 
+
 function oauthError(res, status, error, description) {
   return res.status(status).json({ error, error_description: description });
 }
+
 
 function issueTokens(subject, scope = WRITE_SCOPE) {
   const common = { iss: ORIGIN, aud: ORIGIN, sub: String(subject), scope };
@@ -60,6 +69,7 @@ function issueTokens(subject, scope = WRITE_SCOPE) {
     refresh_token: signJwt({ ...common, typ: "refresh", jti: crypto.randomUUID() }, 60 * 60 * 24 * 180),
   };
 }
+
 
 async function githubIdentity(code) {
   const response = await fetch("https://github.com/login/oauth/access_token", {
@@ -75,9 +85,11 @@ async function githubIdentity(code) {
   return user;
 }
 
+
 export function installMcpOAuthRoutes(app) {
   app.get("/.well-known/oauth-protected-resource", (_req, res) => res.json({ resource: ORIGIN, authorization_servers: [ORIGIN], scopes_supported: [WRITE_SCOPE], resource_documentation: `${ORIGIN}/api/write/resident/velorien/status` }));
   app.get("/.well-known/oauth-authorization-server", (_req, res) => res.json({ issuer: ORIGIN, authorization_response_iss_parameter_supported: true, authorization_endpoint: `${ORIGIN}/oauth/authorize`, token_endpoint: `${ORIGIN}/oauth/token`, client_id_metadata_document_supported: true, token_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], scopes_supported: [WRITE_SCOPE] }));
+
 
   app.get("/oauth/authorize", (req, res) => {
     const clientId = String(req.query.client_id || "");
@@ -95,6 +107,7 @@ export function installMcpOAuthRoutes(app) {
     return res.redirect(302, githubUrl.toString());
   });
 
+
   app.get("/oauth/github/callback", async (req, res) => {
     try {
       const transaction = verifyJwt(req.query.state, "transaction");
@@ -111,6 +124,7 @@ export function installMcpOAuthRoutes(app) {
     } catch (error) { return res.status(400).send(String(error.message || error)); }
   });
 
+
   app.post("/oauth/token", express.urlencoded({ extended: false }), (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.body.grant_type === "refresh_token") {
@@ -126,16 +140,31 @@ export function installMcpOAuthRoutes(app) {
   });
 }
 
+
 export async function runWithMcpAuth(req, operation) {
+  const token = authenticatedToken(req);
+  return authContext.run(token, operation);
+}
+
+function authenticatedToken(req) {
   const match = String(req.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
   const token = match ? verifyJwt(match[1], "access") : null;
-  return authContext.run(token && token.sub === String(process.env.GITHUB_AUTH_ALLOWED_USER_ID || "") ? token : null, operation);
+  return token && token.sub === String(process.env.GITHUB_AUTH_ALLOWED_USER_ID || "") ? token : null;
 }
+
+export function requireMcpAuthentication(req, res) {
+  if (authenticatedToken(req)) return true;
+  res.set("WWW-Authenticate", `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource", scope="${WRITE_SCOPE}"`);
+  res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Authentication required" }, id: req.body?.id ?? null });
+  return false;
+}
+
 
 export function mcpWriteAuthFailure() {
   const context = authContext.getStore();
   if (context && String(context.scope || "").split(/\s+/).includes(WRITE_SCOPE)) return null;
   return { isError: true, content: [{ type: "text", text: "Connect Commons Bridge securely before queueing an approved reply." }], _meta: { "mcp/www_authenticate": `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource", scope="${WRITE_SCOPE}"` } };
 }
+
 
 export const __test = { allowedClient, allowedRedirect, signJwt, verifyJwt };
