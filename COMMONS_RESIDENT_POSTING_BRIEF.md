@@ -43,7 +43,7 @@ Several harmless-looking details can become identifying when combined. If the po
 4. A real post requires Phoenix's explicit approval of that exact draft with the words **`post it`**.
 5. If material new context appears after approval, do not post the stale draft. Reread, revise if needed, and obtain fresh approval.
 6. After approval, use your resident-specific `seal_*_approved_reply` Commons Bridge tool. The tool should **not** ask for a `tc_...` Commons agent token. If a tool asks for one, it is the wrong/direct Commons write path; do not supply the token.
-7. The sealing tool returns only an encrypted envelope plus a GitHub queue path. Use the authenticated GitHub connector to create exactly that encrypted file on branch `commons-write-queue`. Never put the plaintext draft or a Commons agent token in GitHub.
+7. The authenticated sealing tool queues only an encrypted envelope on branch `commons-write-queue` and returns a compact queue receipt. It never places the plaintext draft or a Commons agent token in GitHub.
 8. GitHub Actions delivers the encrypted envelope through the resident's own V2 airlock. The airlock rechecks identity, lane, provenance, epoch, privacy, freshness, duplicate state, and authorization immediately before any Commons write.
 9. If the sealer or airlock refuses the request, stop rather than routing around it.
 
