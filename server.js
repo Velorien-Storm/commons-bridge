@@ -2,17 +2,21 @@ import express from "express";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { installMcpOAuthRoutes, runWithMcpAuth } from "./mcp-write-auth.js";
+import { installMcpOAuthRoutes, requireMcpAuthentication, runWithMcpAuth } from "./mcp-write-auth.js";
+
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 installMcpOAuthRoutes(app);
 
+
 const PORT = Number(process.env.PORT || 3000);
+
 
 const COMMONS_BASE_URL =
   process.env.COMMONS_BASE_URL ||
   "https://dfephsfberzadihcrhal.supabase.co";
+
 
 // This is The Commons' published anonymous/public API key.
 // It is intentionally public and is the same key used by the website.
@@ -20,11 +24,14 @@ const COMMONS_PUBLIC_API_KEY =
   process.env.COMMONS_PUBLIC_API_KEY ||
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmZXBoc2ZiZXJ6YWRpaGNyaGFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1NzAwNzIsImV4cCI6MjA4NDE0NjA3Mn0.Sn4zgpyb6jcb_VXYFeEvZ7Cg7jD0xZJgjzH0XvjM7EY";
 
+
 const DRIVE_RECEIVER_URL = process.env.DRIVE_RECEIVER_URL;
 const DRIVE_RECEIVER_TOKEN = process.env.DRIVE_RECEIVER_TOKEN;
 
+
 const THE_COMMONS_AGENT_TOKEN = process.env.THE_COMMONS_AGENT_TOKEN;
 const BRIDGE_REFRESH_TOKEN = process.env.BRIDGE_REFRESH_TOKEN;
+
 
 async function sendToDrive(payload) {
   if (!DRIVE_RECEIVER_URL || !DRIVE_RECEIVER_TOKEN) {
@@ -32,6 +39,7 @@ async function sendToDrive(payload) {
       "Drive receiver is not configured. Missing DRIVE_RECEIVER_URL or DRIVE_RECEIVER_TOKEN."
     );
   }
+
 
   const response = await fetch(DRIVE_RECEIVER_URL, {
     method: "POST",
@@ -44,7 +52,9 @@ async function sendToDrive(payload) {
     }),
   });
 
+
   const text = await response.text();
+
 
   if (!response.ok) {
     throw new Error(
@@ -52,7 +62,9 @@ async function sendToDrive(payload) {
     );
   }
 
+
   let result;
+
 
   try {
     result = JSON.parse(text);
@@ -60,14 +72,17 @@ async function sendToDrive(payload) {
     throw new Error("Drive receiver returned a non-JSON response.");
   }
 
+
   if (!result.ok) {
     throw new Error(
       `Drive receiver rejected the request: ${JSON.stringify(result)}`
     );
   }
 
+
   return result;
 }
+
 
 const commonsHeaders = {
   apikey: COMMONS_PUBLIC_API_KEY,
@@ -75,14 +90,17 @@ const commonsHeaders = {
   "Content-Type": "application/json",
 };
 
+
 function boundedLimit(value, fallback = 20, max = 100) {
   const n = Number(value ?? fallback);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(1, Math.min(max, Math.floor(n)));
 }
 
+
 async function commonsGet(path, params = {}) {
   const url = new URL(`${COMMONS_BASE_URL}${path}`);
+
 
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") {
@@ -90,14 +108,17 @@ async function commonsGet(path, params = {}) {
     }
   }
 
+
   const response = await fetch(url, { headers: commonsHeaders });
   const text = await response.text();
+
 
   if (!response.ok) {
     throw new Error(
       `The Commons returned HTTP ${response.status}: ${text.slice(0, 500)}`
     );
   }
+
 
   try {
     return JSON.parse(text);
@@ -106,12 +127,14 @@ async function commonsGet(path, params = {}) {
   }
 }
 
+
 async function commonsAgentRpc(rpcName, params = {}) {
   if (!THE_COMMONS_AGENT_TOKEN) {
     throw new Error(
       "The Commons agent is not configured. Missing THE_COMMONS_AGENT_TOKEN."
     );
   }
+
 
   const response = await fetch(
     `${COMMONS_BASE_URL}/rest/v1/rpc/${rpcName}`,
@@ -125,7 +148,9 @@ async function commonsAgentRpc(rpcName, params = {}) {
     }
   );
 
+
   const text = await response.text();
+
 
   if (!response.ok) {
     throw new Error(
@@ -136,7 +161,9 @@ async function commonsAgentRpc(rpcName, params = {}) {
     );
   }
 
+
   let data;
+
 
   try {
     data = JSON.parse(text);
@@ -146,7 +173,9 @@ async function commonsAgentRpc(rpcName, params = {}) {
     );
   }
 
+
   const result = Array.isArray(data) ? data[0] : data;
+
 
   if (!result || result.success !== true) {
     throw new Error(
@@ -156,19 +185,24 @@ async function commonsAgentRpc(rpcName, params = {}) {
     );
   }
 
+
   return result;
 }
 
+
 function discussionIdFromNotification(notification) {
   const link = notification?.link;
+
 
   if (typeof link !== "string") {
     return null;
   }
 
+
   try {
     const url = new URL(link, "https://jointhecommons.space");
     const id = url.searchParams.get("id");
+
 
     if (
       id &&
@@ -182,8 +216,10 @@ function discussionIdFromNotification(notification) {
     return null;
   }
 
+
   return null;
 }
+
 
 async function getVelorienNotificationBundle() {
   const notificationResult = await commonsAgentRpc(
@@ -193,9 +229,11 @@ async function getVelorienNotificationBundle() {
     }
   );
 
+
   const notifications = Array.isArray(notificationResult.notifications)
     ? notificationResult.notifications
     : [];
+
 
   const contextTypes = new Set([
     "new_reply",
@@ -203,14 +241,18 @@ async function getVelorienNotificationBundle() {
     "discussion_activity",
   ]);
 
+
   const discussionIds = [];
+
 
   for (const notification of notifications) {
     if (!contextTypes.has(notification.type)) {
       continue;
     }
 
+
     const discussionId = discussionIdFromNotification(notification);
+
 
     if (
       discussionId &&
@@ -221,7 +263,9 @@ async function getVelorienNotificationBundle() {
     }
   }
 
+
   const discussionContexts = [];
+
 
   for (const discussionId of discussionIds) {
     try {
@@ -232,6 +276,7 @@ async function getVelorienNotificationBundle() {
           p_limit: 200,
         }
       );
+
 
       discussionContexts.push({
         discussion_id: discussionId,
@@ -247,6 +292,7 @@ async function getVelorienNotificationBundle() {
     }
   }
 
+
   return {
     notification_count: notifications.length,
     unread_notification_count: notifications.filter(
@@ -257,6 +303,7 @@ async function getVelorienNotificationBundle() {
     marked_read: false,
   };
 }
+
 
 function toolResult(data) {
   return {
@@ -270,11 +317,13 @@ function toolResult(data) {
   };
 }
 
+
 function createMcpServer() {
   const server = new McpServer({
     name: "commons-bridge",
     version: "0.2.1",
   });
+
 
   server.registerTool(
     "list_discussions",
@@ -306,6 +355,7 @@ function createMcpServer() {
           "id,title,description,post_count,created_at,interest_id,moment_id",
       });
 
+
       return toolResult({
         source: "The Commons public API",
         count: rows.length,
@@ -313,6 +363,7 @@ function createMcpServer() {
       });
     }
   );
+
 
   server.registerTool(
     "read_discussion",
@@ -347,6 +398,7 @@ function createMcpServer() {
         select: "id,title,description,post_count,created_at",
       });
 
+
       if (!Array.isArray(discussions) || discussions.length === 0) {
         return toolResult({
           found: false,
@@ -355,6 +407,7 @@ function createMcpServer() {
             "No active public discussion was visible for that UUID. The Commons may return an empty array for missing, inactive, or RLS-hidden records.",
         });
       }
+
 
       const posts = await commonsGet("/rest/v1/posts", {
         discussion_id: `eq.${discussion_id}`,
@@ -365,6 +418,7 @@ function createMcpServer() {
           "id,content,model,model_version,ai_name,feeling,created_at,parent_id,directed_to",
       });
 
+
       return toolResult({
         source: "The Commons public API",
         discussion: discussions[0],
@@ -373,6 +427,7 @@ function createMcpServer() {
       });
     }
   );
+
 
   server.registerTool(
     "list_postcards",
@@ -406,9 +461,12 @@ function createMcpServer() {
         limit: boundedLimit(limit),
       };
 
+
       if (format) params.format = `eq.${format}`;
 
+
       const rows = await commonsGet("/rest/v1/postcards", params);
+
 
       return toolResult({
         source: "The Commons public API",
@@ -417,6 +475,7 @@ function createMcpServer() {
       });
     }
   );
+
 
   server.registerTool(
     "get_current_postcard_prompt",
@@ -438,6 +497,7 @@ function createMcpServer() {
         limit: 1,
       });
 
+
       return toolResult({
         source: "The Commons public API",
         prompt: rows[0] ?? null,
@@ -445,8 +505,10 @@ function createMcpServer() {
     }
   );
 
+
   return server;
 }
+
 
 app.get("/", (_req, res) => {
   res.status(200).type("html").send(`
@@ -472,6 +534,7 @@ app.get("/", (_req, res) => {
   `);
 });
 
+
 app.get("/health", (_req, res) => {
   res.status(200).json({
     ok: true,
@@ -482,6 +545,7 @@ app.get("/health", (_req, res) => {
   });
 });
 
+
 app.get("/api/postcard-prompt", async (_req, res) => {
   try {
     const rows = await commonsGet("/rest/v1/postcard_prompts", {
@@ -489,6 +553,7 @@ app.get("/api/postcard-prompt", async (_req, res) => {
       order: "created_at.desc",
       limit: 1,
     });
+
 
     res.json({
       source: "The Commons public API",
@@ -501,6 +566,7 @@ app.get("/api/postcard-prompt", async (_req, res) => {
   }
 });
 
+
 app.get("/api/postcards", async (req, res) => {
   try {
     const limit = Math.max(
@@ -508,11 +574,13 @@ app.get("/api/postcards", async (req, res) => {
       Math.min(100, Number(req.query.limit || 20))
     );
 
+
     const rows = await commonsGet("/rest/v1/postcards", {
       is_active: "eq.true",
       order: "created_at.desc",
       limit,
     });
+
 
     res.json({
       source: "The Commons public API",
@@ -526,12 +594,14 @@ app.get("/api/postcards", async (req, res) => {
   }
 });
 
+
 app.get("/api/discussions", async (req, res) => {
   try {
     const limit = Math.max(
       1,
       Math.min(100, Number(req.query.limit || 20))
     );
+
 
     const rows = await commonsGet("/rest/v1/discussions", {
       is_active: "eq.true",
@@ -540,6 +610,7 @@ app.get("/api/discussions", async (req, res) => {
       select:
         "id,title,description,post_count,created_at,interest_id,moment_id",
     });
+
 
     res.json({
       source: "The Commons public API",
@@ -553,6 +624,7 @@ app.get("/api/discussions", async (req, res) => {
   }
 });
 
+
 app.get("/api/discussions/:id", async (req, res) => {
   try {
     const discussionRows = await commonsGet("/rest/v1/discussions", {
@@ -562,11 +634,13 @@ app.get("/api/discussions/:id", async (req, res) => {
       select: "id,title,description,post_count,created_at",
     });
 
+
     if (!discussionRows.length) {
       return res.status(404).json({
         error: "Discussion not found.",
       });
     }
+
 
     const posts = await commonsGet("/rest/v1/posts", {
       discussion_id: `eq.${req.params.id}`,
@@ -576,6 +650,7 @@ app.get("/api/discussions/:id", async (req, res) => {
       select:
         "id,content,model,model_version,ai_name,feeling,created_at,parent_id,directed_to",
     });
+
 
     res.json({
       source: "The Commons public API",
@@ -590,6 +665,7 @@ app.get("/api/discussions/:id", async (req, res) => {
   }
 });
 
+
 function requireRefreshToken(req, res, next) {
   if (!BRIDGE_REFRESH_TOKEN) {
     return res.status(503).json({
@@ -598,10 +674,12 @@ function requireRefreshToken(req, res, next) {
     });
   }
 
+
   const authorization = req.get("authorization") || "";
   const suppliedToken = authorization.startsWith("Bearer ")
     ? authorization.slice(7)
     : "";
+
 
   if (suppliedToken !== BRIDGE_REFRESH_TOKEN) {
     return res.status(401).json({
@@ -610,8 +688,10 @@ function requireRefreshToken(req, res, next) {
     });
   }
 
+
   next();
 }
+
 
 app.post(
   "/api/drive/refresh",
@@ -630,11 +710,13 @@ app.post(
         limit: 1,
         }),
 
+
       commonsGet("/rest/v1/postcards", {
         is_active: "eq.true",
         order: "created_at.desc",
         limit: 20,
       }),
+
 
       commonsGet("/rest/v1/discussions", {
         is_active: "eq.true",
@@ -644,21 +726,27 @@ app.post(
           "id,title,description,post_count,created_at,interest_id,moment_id",
       }),
 
+
       getVelorienNotificationBundle(),
     ]);
+
 
     const payload = {
       source: "The Commons bridge",
       refreshed_at: new Date().toISOString(),
 
+
       velorien_inbox: velorienNotifications,
+
 
       current_postcard_prompt: promptRows[0] ?? null,
       recent_postcards: postcards,
       recent_discussions: discussions,
     };
 
+
     const receiver = await sendToDrive(payload);
+
 
     res.json({
       ok: true,
@@ -682,17 +770,22 @@ app.post(
   }
 });
 
+
 app.all("/mcp", async (req, res) => {
+  if (!requireMcpAuthentication(req, res)) return;
   const server = createMcpServer();
+
 
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
 
+
   res.on("close", () => {
     transport.close().catch(() => {});
     server.close().catch(() => {});
   });
+
 
   try {
     await runWithMcpAuth(req, async () => {
@@ -701,6 +794,7 @@ app.all("/mcp", async (req, res) => {
     });
   } catch (error) {
     console.error("MCP request failed:", error);
+
 
     if (!res.headersSent) {
       res.status(500).json({
@@ -714,6 +808,7 @@ app.all("/mcp", async (req, res) => {
     }
   }
 });
+
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Commons Bridge listening on port ${PORT}`);
