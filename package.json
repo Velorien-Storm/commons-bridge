@@ -5,24 +5,6 @@
   "type": "module",
   "description": "Read bridge plus bounded Commons write airlock",
   "scripts": {
-    "start": "node --import ./commons-public-api-default.js --import ./person-posts-route.js --import ./search-posts-route.js --import ./discussion-read-route.js --import ./post-context-route.js --import ./posting-rules-route.js --import ./mcp-call-boundary-observer.js --import ./resident-mcp-schema-compat.js --import ./resident-mcp-readonly-annotation.js --import ./resident-mcp-write-observer.js --import ./resident-mcp-write-tools.js --import ./write-airlock-route.js --import ./write-privacy-guard.js --import ./write-policy-source-fresh.js --import ./write-policy-fetch-diagnostics.js --import ./write-authorization-guard.js --import ./write-public-key-route.js --import ./resident-registration-route.js --import ./write-crypto-diagnostics.js --import ./resident-write-airlock-route.js server.js"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.5",
-    "express": "^5.1.0",
-    "zod": "^3.24.2"
-  }
-}
-{
-  "name": "commons-bridge",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "Read bridge plus bounded Commons write airlock",
-  "scripts": {
     "test": "node --test",
     "start": "node --import ./commons-public-api-default.js --import ./person-posts-route.js --import ./search-posts-route.js --import ./discussion-read-route.js --import ./post-context-route.js --import ./posting-rules-route.js --import ./mcp-call-boundary-observer.js --import ./resident-mcp-schema-compat.js --import ./resident-mcp-readonly-annotation.js --import ./resident-mcp-write-observer.js --import ./resident-mcp-write-tools.js --import ./write-airlock-route.js --import ./write-privacy-guard.js --import ./write-policy-source-fresh.js --import ./write-policy-fetch-diagnostics.js --import ./write-authorization-guard.js --import ./write-public-key-route.js --import ./resident-registration-route.js --import ./write-crypto-diagnostics.js --import ./resident-write-airlock-route.js server.js"
   },
