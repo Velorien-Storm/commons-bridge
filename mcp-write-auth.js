@@ -5,8 +5,12 @@ import express from "express";
 
 
 
+
+
+
+
 const ORIGIN = "https://commons-bridge.onrender.com";
-const RESOURCE = `${ORIGIN}/mcp`;
+const RESOURCE = `${ORIGIN}/mcp-v2`;
 const WRITE_SCOPE = "commons:write";
 const authContext = new AsyncLocalStorage();
 const pendingCodes = new Map();
@@ -14,8 +18,16 @@ const pendingCodes = new Map();
 
 
 
+
+
+
+
 const b64url = (value) => Buffer.from(value).toString("base64url");
 const fromB64url = (value) => Buffer.from(value, "base64url").toString("utf8");
+
+
+
+
 
 
 
@@ -29,6 +41,10 @@ function secret() {
 
 
 
+
+
+
+
 function signJwt(payload, lifetimeSeconds) {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -36,6 +52,10 @@ function signJwt(payload, lifetimeSeconds) {
   const signature = crypto.createHmac("sha256", secret()).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
+
+
+
+
 
 
 
@@ -58,9 +78,17 @@ function verifyJwt(token, expectedType) {
 
 
 
+
+
+
+
 function allowedClient(value) {
   return value === "https://chatgpt.com/oauth/client.json" || /^https:\/\/chatgpt\.com\/oauth\/[A-Za-z0-9_-]+\/client\.json$/.test(value);
 }
+
+
+
+
 
 
 
@@ -72,9 +100,17 @@ function allowedRedirect(value) {
 
 
 
+
+
+
+
 function oauthError(res, status, error, description) {
   return res.status(status).json({ error, error_description: description });
 }
+
+
+
+
 
 
 
@@ -89,6 +125,10 @@ function issueTokens(subject, scope = WRITE_SCOPE) {
     refresh_token: signJwt({ ...common, typ: "refresh", jti: crypto.randomUUID() }, 60 * 60 * 24 * 180),
   };
 }
+
+
+
+
 
 
 
@@ -110,11 +150,20 @@ async function githubIdentity(code) {
 
 
 
+
+
+
+
 export function installMcpOAuthRoutes(app) {
   const protectedResource = (_req, res) => res.json({ resource: RESOURCE, authorization_servers: [ORIGIN], scopes_supported: [WRITE_SCOPE], resource_documentation: `${ORIGIN}/api/write/resident/velorien/status` });
   app.get("/.well-known/oauth-protected-resource", protectedResource);
   app.get("/.well-known/oauth-protected-resource/mcp", protectedResource);
+  app.get("/.well-known/oauth-protected-resource/mcp-v2", protectedResource);
   app.get("/.well-known/oauth-authorization-server", (_req, res) => res.json({ issuer: ORIGIN, authorization_response_iss_parameter_supported: true, authorization_endpoint: `${ORIGIN}/oauth/authorize`, token_endpoint: `${ORIGIN}/oauth/token`, client_id_metadata_document_supported: true, token_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], scopes_supported: [WRITE_SCOPE] }));
+
+
+
+
 
 
 
@@ -138,6 +187,10 @@ export function installMcpOAuthRoutes(app) {
 
 
 
+
+
+
+
   app.get("/oauth/github/callback", async (req, res) => {
     try {
       const transaction = verifyJwt(req.query.state, "transaction");
@@ -153,6 +206,10 @@ export function installMcpOAuthRoutes(app) {
       return res.redirect(302, redirect.toString());
     } catch (error) { return res.status(400).send(String(error.message || error)); }
   });
+
+
+
+
 
 
 
@@ -175,10 +232,16 @@ export function installMcpOAuthRoutes(app) {
 
 
 
+
+
+
+
 export async function runWithMcpAuth(req, operation) {
   const token = authenticatedToken(req);
   return authContext.run(token, operation);
 }
+
+
 
 
 function authenticatedToken(req) {
@@ -186,6 +249,8 @@ function authenticatedToken(req) {
   const token = match ? verifyJwt(match[1], "access") : null;
   return token && token.sub === String(process.env.GITHUB_AUTH_ALLOWED_USER_ID || "") ? token : null;
 }
+
+
 
 
 export function requireMcpAuthentication(req, res) {
@@ -198,11 +263,19 @@ export function requireMcpAuthentication(req, res) {
 
 
 
+
+
+
+
 export function mcpWriteAuthFailure() {
   const context = authContext.getStore();
   if (context && String(context.scope || "").split(/\s+/).includes(WRITE_SCOPE)) return null;
   return { isError: true, content: [{ type: "text", text: "Connect Commons Bridge securely before queueing an approved reply." }], _meta: { "mcp/www_authenticate": `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource", scope="${WRITE_SCOPE}"` } };
 }
+
+
+
+
 
 
 
