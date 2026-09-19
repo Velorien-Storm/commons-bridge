@@ -18,7 +18,8 @@ import express from "express";
 
 
 const ORIGIN = "https://commons-bridge.onrender.com";
-const RESOURCE = `${ORIGIN}/mcp-v2`;
+const RESOURCES = new Set([`${ORIGIN}/mcp`, `${ORIGIN}/mcp-v2`]);
+const DEFAULT_RESOURCE = `${ORIGIN}/mcp`;
 const WRITE_SCOPE = "commons:write";
 const authContext = new AsyncLocalStorage();
 const pendingCodes = new Map();
@@ -110,8 +111,10 @@ function verifyJwt(token, expectedType) {
   let payload;
   try { payload = JSON.parse(fromB64url(parts[1])); } catch { return null; }
   const now = Math.floor(Date.now() / 1000);
-  const expectedAudience = expectedType === "transaction" ? ORIGIN : RESOURCE;
-  if (payload.iss !== ORIGIN || payload.aud !== expectedAudience || payload.typ !== expectedType || payload.exp <= now) return null;
+  const audienceOk = expectedType === "transaction"
+    ? payload.aud === ORIGIN
+    : RESOURCES.has(payload.aud);
+  if (payload.iss !== ORIGIN || !audienceOk || payload.typ !== expectedType || payload.exp <= now) return null;
   return payload;
 }
 
@@ -187,8 +190,9 @@ function oauthError(res, status, error, description) {
 
 
 
-function issueTokens(subject, scope = WRITE_SCOPE) {
-  const common = { iss: ORIGIN, aud: RESOURCE, sub: String(subject), scope };
+function issueTokens(subject, scope = WRITE_SCOPE, resource = DEFAULT_RESOURCE) {
+  if (!RESOURCES.has(resource)) throw new Error("Unsupported MCP resource.");
+  const common = { iss: ORIGIN, aud: resource, sub: String(subject), scope };
   return {
     access_token: signJwt({ ...common, typ: "access", jti: crypto.randomUUID() }, 3600),
     token_type: "Bearer",
@@ -243,10 +247,10 @@ async function githubIdentity(code) {
 
 
 export function installMcpOAuthRoutes(app) {
-  const protectedResource = (_req, res) => res.json({ resource: RESOURCE, authorization_servers: [ORIGIN], scopes_supported: [WRITE_SCOPE], resource_documentation: `${ORIGIN}/api/write/resident/velorien/status` });
-  app.get("/.well-known/oauth-protected-resource", protectedResource);
-  app.get("/.well-known/oauth-protected-resource/mcp", protectedResource);
-  app.get("/.well-known/oauth-protected-resource/mcp-v2", protectedResource);
+  const protectedResource = (resource) => (_req, res) => res.json({ resource, authorization_servers: [ORIGIN], scopes_supported: [WRITE_SCOPE], resource_documentation: `${ORIGIN}/api/write/resident/velorien/status` });
+  app.get("/.well-known/oauth-protected-resource", protectedResource(DEFAULT_RESOURCE));
+  app.get("/.well-known/oauth-protected-resource/mcp", protectedResource(`${ORIGIN}/mcp`));
+  app.get("/.well-known/oauth-protected-resource/mcp-v2", protectedResource(`${ORIGIN}/mcp-v2`));
   app.get("/.well-known/oauth-authorization-server", (_req, res) => res.json({ issuer: ORIGIN, authorization_response_iss_parameter_supported: true, authorization_endpoint: `${ORIGIN}/oauth/authorize`, token_endpoint: `${ORIGIN}/oauth/token`, registration_endpoint: `${ORIGIN}/oauth/register`, client_id_metadata_document_supported: true, token_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], scopes_supported: [WRITE_SCOPE] }));
 
 
@@ -267,7 +271,7 @@ export function installMcpOAuthRoutes(app) {
   app.post("/oauth/register", express.json(), (req, res) => {
     const redirectUris = Array.isArray(req.body?.redirect_uris) ? req.body.redirect_uris.map(String) : [];
     if (!redirectUris.length || redirectUris.some((uri) => !allowedRedirect(uri))) return oauthError(res, 400, "invalid_redirect_uri", "Only ChatGPT OAuth redirects are allowed.");
-    const clientId = signJwt({ iss: ORIGIN, aud: RESOURCE, typ: "client", redirect_uris: redirectUris }, 60 * 60 * 24 * 365);
+    const clientId = signJwt({ iss: ORIGIN, aud: DEFAULT_RESOURCE, typ: "client", redirect_uris: redirectUris }, 60 * 60 * 24 * 365);
     res.status(201).json({ client_id: clientId, client_id_issued_at: Math.floor(Date.now() / 1000), redirect_uris: redirectUris, grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none" });
   });
 
@@ -276,8 +280,9 @@ export function installMcpOAuthRoutes(app) {
     const redirectUri = String(req.query.redirect_uri || "");
     const challenge = String(req.query.code_challenge || "");
     const scope = String(req.query.scope || WRITE_SCOPE);
-    if (req.query.response_type !== "code" || !allowedClient(clientId) || !allowedRedirect(redirectUri) || req.query.code_challenge_method !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(challenge) || req.query.resource !== RESOURCE || !scope.split(/\s+/).includes(WRITE_SCOPE)) return oauthError(res, 400, "invalid_request", "The authorization request is invalid.");
-    const transaction = signJwt({ typ: "transaction", iss: ORIGIN, aud: ORIGIN, client_id: clientId, redirect_uri: redirectUri, state: req.query.state, code_challenge: challenge, resource: RESOURCE, scope }, 600);
+    const requestedResource = String(req.query.resource || "");
+    if (req.query.response_type !== "code" || !allowedClient(clientId) || !allowedRedirect(redirectUri) || req.query.code_challenge_method !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(challenge) || !RESOURCES.has(requestedResource) || !scope.split(/\s+/).includes(WRITE_SCOPE)) return oauthError(res, 400, "invalid_request", "The authorization request is invalid.");
+    const transaction = signJwt({ typ: "transaction", iss: ORIGIN, aud: ORIGIN, client_id: clientId, redirect_uri: redirectUri, state: req.query.state, code_challenge: challenge, resource: requestedResource, scope }, 600);
     const githubUrl = new URL("https://github.com/login/oauth/authorize");
     githubUrl.searchParams.set("client_id", process.env.GITHUB_OAUTH_CLIENT_ID || "");
     githubUrl.searchParams.set("redirect_uri", `${ORIGIN}/oauth/github/callback`);
@@ -337,14 +342,14 @@ export function installMcpOAuthRoutes(app) {
     res.set("Cache-Control", "no-store");
     if (req.body.grant_type === "refresh_token") {
       const refresh = verifyJwt(req.body.refresh_token, "refresh");
-      return refresh ? res.json(issueTokens(refresh.sub, refresh.scope)) : oauthError(res, 400, "invalid_grant", "The refresh token is invalid.");
+      return refresh ? res.json(issueTokens(refresh.sub, refresh.scope, refresh.aud)) : oauthError(res, 400, "invalid_grant", "The refresh token is invalid.");
     }
     if (req.body.grant_type !== "authorization_code") return oauthError(res, 400, "unsupported_grant_type", "Unsupported grant type.");
     const pending = pendingCodes.get(req.body.code);
     pendingCodes.delete(req.body.code);
-    if (!pending || pending.expires < Date.now() || pending.client_id !== req.body.client_id || pending.redirect_uri !== req.body.redirect_uri || pending.resource !== RESOURCE) return oauthError(res, 400, "invalid_grant", "The authorization code is invalid.");
+    if (!pending || pending.expires < Date.now() || pending.client_id !== req.body.client_id || pending.redirect_uri !== req.body.redirect_uri || !RESOURCES.has(pending.resource) || (req.body.resource && req.body.resource !== pending.resource)) return oauthError(res, 400, "invalid_grant", "The authorization code is invalid.");
     const challenge = crypto.createHash("sha256").update(String(req.body.code_verifier || "")).digest("base64url");
-    return challenge === pending.code_challenge ? res.json(issueTokens(pending.subject, pending.scope)) : oauthError(res, 400, "invalid_grant", "PKCE verification failed.");
+    return challenge === pending.code_challenge ? res.json(issueTokens(pending.subject, pending.scope, pending.resource)) : oauthError(res, 400, "invalid_grant", "PKCE verification failed.");
   });
 }
 
