@@ -277,7 +277,7 @@ export function installMcpOAuthRoutes(app) {
     const challenge = String(req.query.code_challenge || "");
     const scope = String(req.query.scope || WRITE_SCOPE);
     if (req.query.response_type !== "code" || !allowedClient(clientId) || !allowedRedirect(redirectUri) || req.query.code_challenge_method !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(challenge) || req.query.resource !== RESOURCE || !scope.split(/\s+/).includes(WRITE_SCOPE)) return oauthError(res, 400, "invalid_request", "The authorization request is invalid.");
-    const transaction = signJwt({ typ: "transaction", iss: ORIGIN, aud: ORIGIN, client_id: clientId, redirect_uri: redirectUri, state: req.query.state, code_challenge: challenge, resource: ORIGIN, scope }, 600);
+    const transaction = signJwt({ typ: "transaction", iss: ORIGIN, aud: ORIGIN, client_id: clientId, redirect_uri: redirectUri, state: req.query.state, code_challenge: challenge, resource: RESOURCE, scope }, 600);
     const githubUrl = new URL("https://github.com/login/oauth/authorize");
     githubUrl.searchParams.set("client_id", process.env.GITHUB_OAUTH_CLIENT_ID || "");
     githubUrl.searchParams.set("redirect_uri", `${ORIGIN}/oauth/github/callback`);
@@ -342,7 +342,7 @@ export function installMcpOAuthRoutes(app) {
     if (req.body.grant_type !== "authorization_code") return oauthError(res, 400, "unsupported_grant_type", "Unsupported grant type.");
     const pending = pendingCodes.get(req.body.code);
     pendingCodes.delete(req.body.code);
-    if (!pending || pending.expires < Date.now() || pending.client_id !== req.body.client_id || pending.redirect_uri !== req.body.redirect_uri || pending.resource !== ORIGIN) return oauthError(res, 400, "invalid_grant", "The authorization code is invalid.");
+    if (!pending || pending.expires < Date.now() || pending.client_id !== req.body.client_id || pending.redirect_uri !== req.body.redirect_uri || pending.resource !== RESOURCE) return oauthError(res, 400, "invalid_grant", "The authorization code is invalid.");
     const challenge = crypto.createHash("sha256").update(String(req.body.code_verifier || "")).digest("base64url");
     return challenge === pending.code_challenge ? res.json(issueTokens(pending.subject, pending.scope)) : oauthError(res, 400, "invalid_grant", "PKCE verification failed.");
   });
