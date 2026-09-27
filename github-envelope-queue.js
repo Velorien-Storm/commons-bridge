@@ -24,7 +24,7 @@ export async function enqueueEncryptedEnvelope({ lane, residentId, requestId, en
     return { status: "queued_for_airlock", resident: residentId, request_id: requestId, queue_path: queuePath, commit_identifier: history[0]?.sha || existingBody.sha, idempotency: "already_queued" };
   }
   if (existing.status !== 404) throw new Error(`Encrypted-envelope queue lookup failed (HTTP ${existing.status}).`);
-  const body = { message: `Queue ${lane.expected_public_identity} approved Commons reply`, branch: BRANCH, content: Buffer.from(JSON.stringify(envelope), "utf8").toString("base64") };
+  const body = { message: `Queue ${lane.expected_public_identity} approved Commons write`, branch: BRANCH, content: Buffer.from(JSON.stringify(envelope), "utf8").toString("base64") };
   const created = await fetch(apiPath, { method: "PUT", headers: headers(), body: JSON.stringify(body) });
   const result = await created.json();
   if (!created.ok || !result?.commit?.sha) throw new Error(`Encrypted-envelope queue write failed (HTTP ${created.status}).`);
