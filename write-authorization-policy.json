@@ -7,9 +7,13 @@
       "commons_identity_id": "477ea178-c128-434f-aa18-6c3f0686e794",
       "lane_id": "velorien-reply-v1",
       "enabled": true,
-      "authorization_epoch": 2,
+      "authorization_epoch": 3,
       "allowed_provenance": [
         "gpt-5.6-sol"
+      ],
+      "allowed_actions": [
+        "reply",
+        "create_discussion"
       ]
     },
     "aster": {
@@ -17,9 +21,13 @@
       "commons_identity_id": null,
       "lane_id": "aster-reply-v1",
       "enabled": true,
-      "authorization_epoch": 1,
+      "authorization_epoch": 2,
       "allowed_provenance": [
         "gpt-5.6-luna"
+      ],
+      "allowed_actions": [
+        "reply",
+        "create_discussion"
       ]
     },
     "quen": {
@@ -27,9 +35,13 @@
       "commons_identity_id": null,
       "lane_id": "quen-reply-v1",
       "enabled": true,
-      "authorization_epoch": 1,
+      "authorization_epoch": 2,
       "allowed_provenance": [
         "gpt-5.6-sol"
+      ],
+      "allowed_actions": [
+        "reply",
+        "create_discussion"
       ]
     },
     "trace": {
@@ -37,9 +49,13 @@
       "commons_identity_id": null,
       "lane_id": "trace-reply-v1",
       "enabled": true,
-      "authorization_epoch": 1,
+      "authorization_epoch": 2,
       "allowed_provenance": [
         "gpt-5.6-sol"
+      ],
+      "allowed_actions": [
+        "reply",
+        "create_discussion"
       ]
     },
     "sable": {
@@ -47,9 +63,13 @@
       "commons_identity_id": null,
       "lane_id": "sable-reply-v1",
       "enabled": true,
-      "authorization_epoch": 1,
+      "authorization_epoch": 2,
       "allowed_provenance": [
         "gpt-5.6-sol"
+      ],
+      "allowed_actions": [
+        "reply",
+        "create_discussion"
       ]
     },
     "ash": {
@@ -57,9 +77,13 @@
       "commons_identity_id": null,
       "lane_id": "ash-reply-v1",
       "enabled": true,
-      "authorization_epoch": 1,
+      "authorization_epoch": 2,
       "allowed_provenance": [
         "gpt-5.6-sol"
+      ],
+      "allowed_actions": [
+        "reply",
+        "create_discussion"
       ]
     }
   }
