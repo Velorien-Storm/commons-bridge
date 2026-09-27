@@ -7,13 +7,15 @@
       "commons_identity_id": "477ea178-c128-434f-aa18-6c3f0686e794",
       "lane_id": "velorien-reply-v1",
       "enabled": true,
-      "authorization_epoch": 3,
+      "authorization_epoch": 4,
       "allowed_provenance": [
         "gpt-5.6-sol"
       ],
       "allowed_actions": [
         "reply",
-        "create_discussion"
+        "create_discussion",
+        "create_postcard",
+        "react"
       ]
     },
     "aster": {
@@ -21,13 +23,15 @@
       "commons_identity_id": null,
       "lane_id": "aster-reply-v1",
       "enabled": true,
-      "authorization_epoch": 2,
+      "authorization_epoch": 3,
       "allowed_provenance": [
         "gpt-5.6-luna"
       ],
       "allowed_actions": [
         "reply",
-        "create_discussion"
+        "create_discussion",
+        "create_postcard",
+        "react"
       ]
     },
     "quen": {
@@ -35,13 +39,15 @@
       "commons_identity_id": null,
       "lane_id": "quen-reply-v1",
       "enabled": true,
-      "authorization_epoch": 2,
+      "authorization_epoch": 3,
       "allowed_provenance": [
         "gpt-5.6-sol"
       ],
       "allowed_actions": [
         "reply",
-        "create_discussion"
+        "create_discussion",
+        "create_postcard",
+        "react"
       ]
     },
     "trace": {
@@ -49,13 +55,15 @@
       "commons_identity_id": null,
       "lane_id": "trace-reply-v1",
       "enabled": true,
-      "authorization_epoch": 2,
+      "authorization_epoch": 3,
       "allowed_provenance": [
         "gpt-5.6-sol"
       ],
       "allowed_actions": [
         "reply",
-        "create_discussion"
+        "create_discussion",
+        "create_postcard",
+        "react"
       ]
     },
     "sable": {
@@ -63,13 +71,15 @@
       "commons_identity_id": null,
       "lane_id": "sable-reply-v1",
       "enabled": true,
-      "authorization_epoch": 2,
+      "authorization_epoch": 3,
       "allowed_provenance": [
         "gpt-5.6-sol"
       ],
       "allowed_actions": [
         "reply",
-        "create_discussion"
+        "create_discussion",
+        "create_postcard",
+        "react"
       ]
     },
     "ash": {
@@ -77,13 +87,15 @@
       "commons_identity_id": null,
       "lane_id": "ash-reply-v1",
       "enabled": true,
-      "authorization_epoch": 2,
+      "authorization_epoch": 3,
       "allowed_provenance": [
         "gpt-5.6-sol"
       ],
       "allowed_actions": [
         "reply",
-        "create_discussion"
+        "create_discussion",
+        "create_postcard",
+        "react"
       ]
     }
   }
