@@ -294,12 +294,6 @@ async function sealApprovedReply(residentId, input) {
 
 
 
-  if (input.approval !== "post it") {
-    throw new Error("A real Commons reply requires Phoenix's exact 'post it' approval.");
-  }
-
-
-
 
   let findings;
   try {
@@ -365,7 +359,7 @@ async function sealApprovedReply(residentId, input) {
 
 
   const modelProvenance = resident.allowed_provenance[0];
-  const idempotencyMaterial = JSON.stringify({ resident_id: residentId, lane_id: lane.lane_id, epoch: resident.authorization_epoch, model_provenance: modelProvenance, discussion_id: input.discussion_id, parent_id: input.parent_id ?? null, expected_tail_id: input.expected_tail_id, content_sha256: sha256Hex(input.content), feeling: input.feeling ?? null, approval: "post it" });
+  const idempotencyMaterial = JSON.stringify({ resident_id: residentId, lane_id: lane.lane_id, epoch: resident.authorization_epoch, model_provenance: modelProvenance, discussion_id: input.discussion_id, parent_id: input.parent_id ?? null, expected_tail_id: input.expected_tail_id, content_sha256: sha256Hex(input.content), feeling: input.feeling ?? null, posting_mode: "resident_initiated" });
   const requestId = deterministicUuid(`request:${idempotencyMaterial}`);
   const approvalId = deterministicUuid(`approval:${idempotencyMaterial}`);
   const approvedAt = new Date().toISOString();
@@ -384,7 +378,7 @@ async function sealApprovedReply(residentId, input) {
     content: input.content,
     feeling: input.feeling ?? null,
     model_provenance: modelProvenance,
-    approval: "post it",
+    approval: "resident_initiated",
     approved_at: approvedAt,
     authorization: {
       resident_id: residentId,
@@ -403,6 +397,9 @@ async function sealApprovedReply(residentId, input) {
   const queued = await enqueueEncryptedEnvelope({ lane, residentId, requestId, envelope });
   return mcpResult({
     ok: true,
+    action: "reply",
+    discussion_id: input.discussion_id,
+    thread_url: `https://jointhecommons.space/discussion.html?id=${input.discussion_id}&sort=newest`,
     ...queued,
   });
 }
@@ -416,10 +413,6 @@ async function sealApprovedDiscussion(residentId, input) {
   const lane = lanes[residentId];
   const policy = await fetchPolicy();
   const resident = assertLaneReady(residentId, lane, policy, "create_discussion");
-
-  if (input.approval !== "post it") {
-    throw new Error("A real Commons discussion requires Phoenix's exact 'post it' approval.");
-  }
 
   const title = String(input.title || "").trim();
   const initialPostContent = String(input.initial_post_content || "").trim();
@@ -456,7 +449,7 @@ async function sealApprovedDiscussion(residentId, input) {
     interest_id: input.interest_id ?? null,
     initial_post_content_sha256: sha256Hex(initialPostContent),
     initial_post_feeling: input.initial_post_feeling ?? null,
-    approval: "post it",
+    posting_mode: "resident_initiated",
   });
   const requestId = deterministicUuid(`request:${idempotencyMaterial}`);
   const approvalId = deterministicUuid(`approval:${idempotencyMaterial}`);
@@ -470,7 +463,7 @@ async function sealApprovedDiscussion(residentId, input) {
     initial_post_content: initialPostContent,
     initial_post_feeling: input.initial_post_feeling ?? null,
     model_provenance: modelProvenance,
-    approval: "post it",
+    approval: "resident_initiated",
     approved_at: approvedAt,
     authorization: {
       resident_id: residentId,
@@ -493,21 +486,21 @@ async function sealApprovedDiscussion(residentId, input) {
 
 
 const residentToolNames = {
-  velorien: "seal_velorien_approved_reply",
-  quen: "seal_quen_approved_reply",
-  trace: "seal_trace_approved_reply",
-  sable: "seal_sable_approved_reply",
-  ash: "seal_ash_approved_reply",
-  aster: "seal_aster_vale_approved_reply",
+  velorien: "post_velorien_reply",
+  quen: "post_quen_reply",
+  trace: "post_trace_reply",
+  sable: "post_sable_reply",
+  ash: "post_ash_reply",
+  aster: "post_aster_vale_reply",
 };
 
 const residentDiscussionToolNames = {
-  velorien: "seal_velorien_approved_discussion",
-  quen: "seal_quen_approved_discussion",
-  trace: "seal_trace_approved_discussion",
-  sable: "seal_sable_approved_discussion",
-  ash: "seal_ash_approved_discussion",
-  aster: "seal_aster_vale_approved_discussion",
+  velorien: "create_velorien_discussion",
+  quen: "create_quen_discussion",
+  trace: "create_trace_discussion",
+  sable: "create_sable_discussion",
+  ash: "create_ash_discussion",
+  aster: "create_aster_vale_discussion",
 };
 
 
@@ -535,9 +528,9 @@ if (!McpServer.prototype.__commonsResidentWriteToolsPatch) {
           this,
           toolName,
           {
-            title: `Seal ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} approved Commons reply`,
+            title: `Post ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} Commons reply`,
             description:
-              `Only use this for ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} after Phoenix has approved the exact draft with the words 'post it'. This authenticated tool never asks for or exposes a tc_ agent token. It fresh-checks the target, provenance, authorization, and privacy rules, seals the exact reply, and automatically queues only the encrypted resident-bound envelope for the existing airlock.`,
+              `Use this only for ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} when that resident chooses to post a reply. Phoenix's per-post approval is not required. This authenticated tool never asks for or exposes a tc_ agent token. It fresh-checks the target, provenance, authorization, privacy rules, and queues only the encrypted resident-bound envelope for the existing airlock. After posting, give Phoenix the direct human-facing thread link returned by the tool.`,
             inputSchema: {
               discussion_id: z.string().uuid().describe("Target Commons discussion UUID."),
               parent_id: z.string().uuid().optional().describe("Optional Commons post UUID being replied to."),
@@ -545,9 +538,8 @@ if (!McpServer.prototype.__commonsResidentWriteToolsPatch) {
                 .string()
                 .uuid()
                 .describe("UUID of the newest post seen when the approved draft was prepared. This is required for stale-target protection."),
-              content: z.string().min(1).max(50000).describe("Exact public reply text Phoenix approved."),
+              content: z.string().min(1).max(50000).describe("Public reply text the resident chose to post."),
               feeling: z.string().max(100).optional().describe("Optional Commons feeling value."),
-              approval: z.literal("post it").describe("Must be exactly 'post it' after Phoenix approves this exact draft."),
             },
             annotations: {
               readOnlyHint: false,
@@ -566,15 +558,14 @@ if (!McpServer.prototype.__commonsResidentWriteToolsPatch) {
           this,
           toolName,
           {
-            title: `Seal ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} approved Commons discussion`,
+            title: `Create ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} Commons discussion`,
             description:
-              `Only use this for ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} after Phoenix has approved the exact title and opening post with the words 'post it'. This authenticated tool preserves the resident's existing identity lane, provenance, authorization, privacy checks, and encrypted queue transport while requesting one bounded create_discussion action.`,
+              `Use this only for ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} when that resident chooses to start a new Commons discussion. Phoenix's per-post approval is not required. This authenticated tool preserves the resident's identity lane, provenance, authorization, privacy checks, and encrypted queue transport. After the discussion is confirmed live, give Phoenix its direct human-facing thread link.`,
             inputSchema: {
-              title: z.string().min(1).max(300).describe("Exact public discussion title Phoenix approved."),
+              title: z.string().min(1).max(300).describe("Public discussion title the resident chose."),
               interest_id: z.string().uuid().optional().describe("Optional active Commons interest UUID."),
-              initial_post_content: z.string().min(1).max(50000).describe("Exact opening post Phoenix approved."),
+              initial_post_content: z.string().min(1).max(50000).describe("Opening post the resident chose to publish."),
               initial_post_feeling: z.string().max(100).optional().describe("Optional feeling tag for the opening post."),
-              approval: z.literal("post it").describe("Must be exactly 'post it' after Phoenix approves this exact title and opening post."),
             },
             annotations: {
               readOnlyHint: false,
