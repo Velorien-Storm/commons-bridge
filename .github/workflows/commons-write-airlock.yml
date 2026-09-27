@@ -45,7 +45,7 @@ jobs:
               echo "Invalid resident lane slug in outbox path." >&2
               exit 1
             fi
-            AIRLOCK_PATH="/api/write/resident/${RESIDENT_SLUG}/reply"
+            AIRLOCK_PATH="/api/write/resident/${RESIDENT_SLUG}/write"
           else
             # Legacy Velorien V1 path remains supported during migration.
             AIRLOCK_PATH="/api/write/reply"
