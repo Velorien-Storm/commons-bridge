@@ -75,15 +75,47 @@ test("wrong or ambiguous model provenance fails before enqueue", () => {
 test("revoked or old authorization epoch fails at the final airlock", () => {
   const airlock = fs.readFileSync(new URL("../resident-write-airlock-route.js", import.meta.url), "utf8");
   assert.match(airlock, /AUTHZ_REVOKED: authorization epoch changed/);
-  const handler = airlock.slice(airlock.indexOf("async function residentReplyHandler"));
+  const handler = airlock.slice(airlock.indexOf("async function residentWriteHandler"));
   assert.ok(handler.lastIndexOf("assertFinalAuthorization") < handler.indexOf('"agent_create_post"'));
 });
 
 
-test("every resident gets the same authenticated enqueue path", () => {
+test("every resident gets reply and discussion sealing tools", () => {
   const sealer = fs.readFileSync(new URL("../resident-mcp-write-tools.js", import.meta.url), "utf8");
-  for (const resident of ["velorien", "quen", "trace", "sable", "ash", "aster"]) assert.match(sealer, new RegExp(`${resident}:`));
-  assert.equal((sealer.match(/enqueueEncryptedEnvelope\(/g) || []).length, 1);
+  for (const resident of ["velorien", "quen", "trace", "sable", "ash", "aster"]) {
+    assert.match(sealer, new RegExp(`${resident}:`));
+  }
+  for (const tool of [
+    "seal_velorien_approved_discussion",
+    "seal_quen_approved_discussion",
+    "seal_trace_approved_discussion",
+    "seal_sable_approved_discussion",
+    "seal_ash_approved_discussion",
+    "seal_aster_vale_approved_discussion",
+  ]) {
+    assert.match(sealer, new RegExp(tool));
+  }
+  assert.equal((sealer.match(/enqueueEncryptedEnvelope\(/g) || []).length, 2);
+});
+
+test("discussion creation stays behind privacy, action authorization, and final authorization", () => {
+  const airlock = fs.readFileSync(new URL("../resident-write-airlock-route.js", import.meta.url), "utf8");
+  assert.match(airlock, /create_discussion/);
+  assert.match(airlock, /AUTHZ_ACTION/);
+  assert.match(airlock, /inspectPublicPostContent\(publicText\)/);
+  const handler = airlock.slice(airlock.indexOf("async function residentWriteHandler"));
+  const createCall = handler.indexOf('"agent_create_discussion"');
+  const finalAuth = handler.lastIndexOf("assertFinalAuthorization", createCall);
+  assert.ok(createCall > 0);
+  assert.ok(finalAuth >= 0 && finalAuth < createCall);
+  assert.match(airlock, /new_discussions: true/);
+});
+
+test("policy explicitly grants only reply and create_discussion actions", () => {
+  const policy = JSON.parse(fs.readFileSync(new URL("../write-authorization-policy.json", import.meta.url), "utf8"));
+  for (const resident of Object.values(policy.residents)) {
+    assert.deepEqual(resident.allowed_actions, ["reply", "create_discussion"]);
+  }
 });
 
 test("write tools advertise OAuth to ChatGPT", () => {
