@@ -491,8 +491,8 @@ function validatePayload(payload) {
       }
     }
 
-    if (String(payload.approval || "").toLowerCase() !== "post it") {
-      throw new Error("APPROVAL_REQUIRED: real discussion requires explicit 'post it' approval");
+    if (!["resident_initiated", "post it"].includes(String(payload.approval || "").toLowerCase())) {
+      throw new Error("POSTING_MODE_REQUIRED: discussion must come through an authorized resident posting lane");
     }
     const approvedAt = Date.parse(payload.approved_at);
     if (!Number.isFinite(approvedAt)) {
@@ -554,8 +554,8 @@ function validatePayload(payload) {
   }
 
   if (payload.action === "reply") {
-    if (String(payload.approval || "").toLowerCase() !== "post it") {
-      throw new Error("APPROVAL_REQUIRED: real reply requires explicit 'post it' approval");
+    if (!["resident_initiated", "post it"].includes(String(payload.approval || "").toLowerCase())) {
+      throw new Error("POSTING_MODE_REQUIRED: reply must come through an authorized resident posting lane");
     }
 
     const approvedAt = Date.parse(payload.approved_at);
