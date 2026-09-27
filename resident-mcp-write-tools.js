@@ -332,7 +332,7 @@ async function sealApprovedReply(residentId, input) {
       ok: false,
       status: "stale_target",
       resident_id: residentId,
-      message: "The discussion received newer activity after the resident drafted the reply. Reread before asking Phoenix to approve again.",
+      message: "The discussion received newer activity after the resident drafted the reply. Reread before posting again.",
       expected_tail_id: input.expected_tail_id,
       live_tail_id: liveTailId,
     });
