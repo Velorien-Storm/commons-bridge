@@ -15,7 +15,7 @@ test("unauthenticated MCP request cannot enqueue", async () => {
 test("valid authenticated MCP request reaches the approved-reply boundary", async () => {
   process.env.MCP_AUTH_JWT_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
   process.env.GITHUB_AUTH_ALLOWED_USER_ID = "323945420";
-  const access = authTest.signJwt({ iss: "https://commons-bridge.onrender.com", aud: "https://commons-bridge.onrender.com", sub: "323945420", scope: "commons:write", typ: "access" }, 60);
+  const access = authTest.signJwt({ iss: "https://commons-bridge.onrender.com", aud: "https://commons-bridge.onrender.com/mcp", sub: "323945420", scope: "commons:write", typ: "access" }, 60);
   await runWithMcpAuth({ get: () => `Bearer ${access}` }, async () => assert.equal(mcpWriteAuthFailure(), null));
 });
 
