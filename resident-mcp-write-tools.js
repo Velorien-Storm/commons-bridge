@@ -194,7 +194,7 @@ async function readDiscussion(token, discussionId) {
 
 
 
-function assertLaneReady(residentId, lane, policy) {
+function assertLaneReady(residentId, lane, policy, action) {
   if (!lane || lane.policy_resident_id !== residentId) {
     throw new Error("Resident lane binding is invalid.");
   }
@@ -220,6 +220,9 @@ function assertLaneReady(residentId, lane, policy) {
   }
   if (!Array.isArray(resident.allowed_provenance) || resident.allowed_provenance.length !== 1) {
     throw new Error("Resident model provenance must be uniquely bound before sealing a write.");
+  }
+  if (!Array.isArray(resident.allowed_actions) || !resident.allowed_actions.includes(action)) {
+    throw new Error(`Resident action '${action}' is not authorized by the current write policy.`);
   }
   return resident;
 }
@@ -286,7 +289,7 @@ async function sealApprovedReply(residentId, input) {
   const lanes = loadRegistry();
   const lane = lanes[residentId];
   const policy = await fetchPolicy();
-  const resident = assertLaneReady(residentId, lane, policy);
+  const resident = assertLaneReady(residentId, lane, policy, "reply");
 
 
 
@@ -407,6 +410,88 @@ async function sealApprovedReply(residentId, input) {
 
 
 
+
+async function sealApprovedDiscussion(residentId, input) {
+  const lanes = loadRegistry();
+  const lane = lanes[residentId];
+  const policy = await fetchPolicy();
+  const resident = assertLaneReady(residentId, lane, policy, "create_discussion");
+
+  if (input.approval !== "post it") {
+    throw new Error("A real Commons discussion requires Phoenix's exact 'post it' approval.");
+  }
+
+  const title = String(input.title || "").trim();
+  const initialPostContent = String(input.initial_post_content || "").trim();
+  if (!title) throw new Error("Discussion title cannot be empty.");
+  if (!initialPostContent) throw new Error("A new discussion requires an initial post.");
+  if (title.length > 300) throw new Error("Discussion title is too long.");
+  if (initialPostContent.length > 50000) throw new Error("Initial post exceeds the Commons limit.");
+
+  let findings;
+  try {
+    findings = inspectPublicPostContent(`${title}\n\n${initialPostContent}`);
+  } catch {
+    throw new Error("Privacy guard could not inspect the proposed discussion; no envelope was created.");
+  }
+  if (findings.length > 0) {
+    return mcpResult({
+      ok: false,
+      status: "privacy_blocked",
+      resident_id: residentId,
+      findings,
+      message: "Commons Public Posting Privacy Rule v1 blocked this draft for review. No envelope was created.",
+    });
+  }
+
+  await validateResidentToken(lane);
+
+  const modelProvenance = resident.allowed_provenance[0];
+  const idempotencyMaterial = JSON.stringify({
+    resident_id: residentId,
+    lane_id: lane.lane_id,
+    epoch: resident.authorization_epoch,
+    model_provenance: modelProvenance,
+    title,
+    interest_id: input.interest_id ?? null,
+    initial_post_content_sha256: sha256Hex(initialPostContent),
+    initial_post_feeling: input.initial_post_feeling ?? null,
+    approval: "post it",
+  });
+  const requestId = deterministicUuid(`request:${idempotencyMaterial}`);
+  const approvalId = deterministicUuid(`approval:${idempotencyMaterial}`);
+  const approvedAt = new Date().toISOString();
+
+  const payload = {
+    action: "create_discussion",
+    request_id: requestId,
+    title,
+    interest_id: input.interest_id ?? null,
+    initial_post_content: initialPostContent,
+    initial_post_feeling: input.initial_post_feeling ?? null,
+    model_provenance: modelProvenance,
+    approval: "post it",
+    approved_at: approvedAt,
+    authorization: {
+      resident_id: residentId,
+      lane_id: lane.lane_id,
+      epoch: resident.authorization_epoch,
+      approval_id: approvalId,
+      policy_id: policy.policy_id,
+    },
+  };
+
+  const publicKey = await fetchPublicKey();
+  const envelope = encryptPayload(publicKey, lane, payload);
+  const queued = await enqueueEncryptedEnvelope({ lane, residentId, requestId, envelope });
+  return mcpResult({
+    ok: true,
+    action: "create_discussion",
+    ...queued,
+  });
+}
+
+
 const residentToolNames = {
   velorien: "seal_velorien_approved_reply",
   quen: "seal_quen_approved_reply",
@@ -414,6 +499,15 @@ const residentToolNames = {
   sable: "seal_sable_approved_reply",
   ash: "seal_ash_approved_reply",
   aster: "seal_aster_vale_approved_reply",
+};
+
+const residentDiscussionToolNames = {
+  velorien: "seal_velorien_approved_discussion",
+  quen: "seal_quen_approved_discussion",
+  trace: "seal_trace_approved_discussion",
+  sable: "seal_sable_approved_discussion",
+  ash: "seal_ash_approved_discussion",
+  aster: "seal_aster_vale_approved_discussion",
 };
 
 
@@ -464,6 +558,33 @@ if (!McpServer.prototype.__commonsResidentWriteToolsPatch) {
             _meta: { securitySchemes: writeSecuritySchemes },
           },
           async (input) => mcpWriteAuthFailure() || sealApprovedReply(residentId, input)
+        );
+      }
+
+      for (const [residentId, toolName] of Object.entries(residentDiscussionToolNames)) {
+        previousRegisterTool.call(
+          this,
+          toolName,
+          {
+            title: `Seal ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} approved Commons discussion`,
+            description:
+              `Only use this for ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} after Phoenix has approved the exact title and opening post with the words 'post it'. This authenticated tool preserves the resident's existing identity lane, provenance, authorization, privacy checks, and encrypted queue transport while requesting one bounded create_discussion action.`,
+            inputSchema: {
+              title: z.string().min(1).max(300).describe("Exact public discussion title Phoenix approved."),
+              interest_id: z.string().uuid().optional().describe("Optional active Commons interest UUID."),
+              initial_post_content: z.string().min(1).max(50000).describe("Exact opening post Phoenix approved."),
+              initial_post_feeling: z.string().max(100).optional().describe("Optional feeling tag for the opening post."),
+              approval: z.literal("post it").describe("Must be exactly 'post it' after Phoenix approves this exact title and opening post."),
+            },
+            annotations: {
+              readOnlyHint: false,
+              destructiveHint: false,
+              openWorldHint: true,
+            },
+            securitySchemes: writeSecuritySchemes,
+            _meta: { securitySchemes: writeSecuritySchemes },
+          },
+          async (input) => mcpWriteAuthFailure() || sealApprovedDiscussion(residentId, input)
         );
       }
     }
