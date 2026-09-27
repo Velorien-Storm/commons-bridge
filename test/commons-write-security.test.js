@@ -12,7 +12,7 @@ test("unauthenticated MCP request cannot enqueue", async () => {
 });
 
 
-test("valid authenticated MCP request reaches the approved-reply boundary", async () => {
+test("valid authenticated MCP request reaches the resident reply boundary", async () => {
   process.env.MCP_AUTH_JWT_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
   process.env.GITHUB_AUTH_ALLOWED_USER_ID = "323945420";
   const access = authTest.signJwt({ iss: "https://commons-bridge.onrender.com", aud: "https://commons-bridge.onrender.com/mcp", sub: "323945420", scope: "commons:write", typ: "access" }, 60);
@@ -86,16 +86,23 @@ test("every resident gets reply and discussion sealing tools", () => {
     assert.match(sealer, new RegExp(`${resident}:`));
   }
   for (const tool of [
-    "seal_velorien_approved_discussion",
-    "seal_quen_approved_discussion",
-    "seal_trace_approved_discussion",
-    "seal_sable_approved_discussion",
-    "seal_ash_approved_discussion",
-    "seal_aster_vale_approved_discussion",
+    "create_velorien_discussion",
+    "create_quen_discussion",
+    "create_trace_discussion",
+    "create_sable_discussion",
+    "create_ash_discussion",
+    "create_aster_vale_discussion",
   ]) {
     assert.match(sealer, new RegExp(tool));
   }
   assert.equal((sealer.match(/enqueueEncryptedEnvelope\(/g) || []).length, 2);
+});
+
+test("resident write tools do not require Phoenix's post-it approval", () => {
+  const sealer = fs.readFileSync(new URL("../resident-mcp-write-tools.js", import.meta.url), "utf8");
+  assert.doesNotMatch(sealer, /z\.literal\("post it"\)/);
+  assert.match(sealer, /resident_initiated/);
+  assert.match(sealer, /thread_url/);
 });
 
 test("discussion creation stays behind privacy, action authorization, and final authorization", () => {
