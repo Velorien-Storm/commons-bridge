@@ -110,11 +110,18 @@ function laneAad(lane, requestId) {
 function targetBinding(payload) {
   return sha256Hex(
     JSON.stringify({
+      action: payload.action ?? null,
       discussion_id: payload.discussion_id ?? null,
       discussion_title: payload.discussion_title ?? null,
       parent_id: payload.parent_id ?? null,
       parent_sha256: payload.parent_sha256 ?? null,
       expected_tail_id: payload.expected_tail_id ?? null,
+      title: payload.title ?? null,
+      interest_id: payload.interest_id ?? null,
+      initial_post_content_sha256: payload.initial_post_content
+        ? sha256Hex(payload.initial_post_content)
+        : null,
+      initial_post_feeling: payload.initial_post_feeling ?? null,
     })
   );
 }
@@ -401,6 +408,11 @@ function assertResidentPolicy(lane, policyBundle, payload) {
     throw new Error("AUTHZ_PROVENANCE: model provenance is not authorized");
   }
 
+  const policyAction = payload.action === "validate_reply" ? "reply" : payload.action;
+  if (!Array.isArray(resident.allowed_actions) || !resident.allowed_actions.includes(policyAction)) {
+    throw new Error("AUTHZ_ACTION: requested action is not authorized for this resident");
+  }
+
   return resident;
 }
 
@@ -415,6 +427,10 @@ function validatePayload(payload) {
     "expected_tail_id",
     "content",
     "feeling",
+    "title",
+    "interest_id",
+    "initial_post_content",
+    "initial_post_feeling",
     "model_provenance",
     "approval",
     "approved_at",
@@ -431,18 +447,85 @@ function validatePayload(payload) {
   if (!isUuid(payload?.request_id)) {
     throw new Error("PAYLOAD_INVALID: invalid request_id");
   }
+  if (!["reply", "validate_reply", "create_discussion"].includes(payload?.action)) {
+    throw new Error("PAYLOAD_INVALID: unsupported action");
+  }
+  if (typeof payload.model_provenance !== "string" || !payload.model_provenance) {
+    throw new Error("PAYLOAD_INVALID: model provenance is required");
+  }
+
+  if (payload.action === "create_discussion") {
+    const title = normalizeOptionalString(payload.title);
+    const interestId = normalizeOptionalString(payload.interest_id);
+    const initialPostContent = normalizeOptionalString(payload.initial_post_content);
+    const initialPostFeeling = normalizeOptionalString(payload.initial_post_feeling);
+
+    if (!title) throw new Error("PAYLOAD_INVALID: discussion title cannot be empty");
+    if (title.length > 300) {
+      throw new Error("PAYLOAD_INVALID: discussion title is too long");
+    }
+    if (interestId && !isUuid(interestId)) {
+      throw new Error("PAYLOAD_INVALID: invalid interest ID");
+    }
+    if (!initialPostContent) {
+      throw new Error("PAYLOAD_INVALID: a new discussion requires an initial post");
+    }
+    if (initialPostContent.length > 50000) {
+      throw new Error("PAYLOAD_INVALID: initial post exceeds the Commons limit");
+    }
+    if (initialPostFeeling && initialPostFeeling.length > 100) {
+      throw new Error("PAYLOAD_INVALID: initial post feeling is too long");
+    }
+
+    for (const field of [
+      "discussion_id",
+      "discussion_title",
+      "parent_id",
+      "parent_sha256",
+      "expected_tail_id",
+      "content",
+      "feeling",
+    ]) {
+      if (payload[field] !== undefined && payload[field] !== null) {
+        throw new Error("PAYLOAD_INVALID: reply-only fields cannot be set for create_discussion");
+      }
+    }
+
+    if (String(payload.approval || "").toLowerCase() !== "post it") {
+      throw new Error("APPROVAL_REQUIRED: real discussion requires explicit 'post it' approval");
+    }
+    const approvedAt = Date.parse(payload.approved_at);
+    if (!Number.isFinite(approvedAt)) {
+      throw new Error("APPROVAL_REQUIRED: approved_at must be an ISO timestamp");
+    }
+    const ageMs = Date.now() - approvedAt;
+    if (ageMs < -5 * 60 * 1000 || ageMs > 24 * 60 * 60 * 1000) {
+      throw new Error("APPROVAL_REQUIRED: approval timestamp is outside the accepted window");
+    }
+
+    return {
+      ...payload,
+      title,
+      interest_id: interestId,
+      initial_post_content: initialPostContent,
+      initial_post_feeling: initialPostFeeling,
+    };
+  }
+
   if (!isUuid(payload?.discussion_id)) {
     throw new Error("PAYLOAD_INVALID: invalid discussion_id");
   }
-  if (!["reply", "validate_reply"].includes(payload?.action)) {
-    throw new Error("PAYLOAD_INVALID: unsupported action");
-  }
-
   if (typeof payload.content !== "string" || payload.content.trim().length === 0) {
     throw new Error("PAYLOAD_INVALID: content cannot be empty");
   }
   if (payload.content.length > 50000) {
     throw new Error("PAYLOAD_INVALID: content exceeds the Commons limit");
+  }
+
+  for (const field of ["title", "interest_id", "initial_post_content", "initial_post_feeling"]) {
+    if (payload[field] !== undefined && payload[field] !== null) {
+      throw new Error("PAYLOAD_INVALID: discussion-creation fields cannot be set for a reply");
+    }
   }
 
   const discussionTitle = normalizeOptionalString(payload.discussion_title);
@@ -468,10 +551,6 @@ function validatePayload(payload) {
   const feeling = normalizeOptionalString(payload.feeling);
   if (feeling && feeling.length > 100) {
     throw new Error("PAYLOAD_INVALID: feeling is too long");
-  }
-
-  if (typeof payload.model_provenance !== "string" || !payload.model_provenance) {
-    throw new Error("PAYLOAD_INVALID: model provenance is required");
   }
 
   if (payload.action === "reply") {
@@ -641,6 +720,9 @@ async function assertFinalAuthorization(lane, context) {
   if (!resident.allowed_provenance?.includes(context.model_provenance)) {
     throw new Error("AUTHZ_PROVENANCE: provenance is no longer authorized");
   }
+  if (!resident.allowed_actions?.includes(context.action)) {
+    throw new Error("AUTHZ_ACTION: action is no longer authorized");
+  }
 }
 
 function receipt(context, extra = {}) {
@@ -691,6 +773,9 @@ function publicFailure(error) {
   if (message.startsWith("AUTHZ_REQUIRED:")) {
     return [400, "AUTHORIZATION_REQUIRED", "The encrypted request is not bound to the resident's current authorization policy."];
   }
+  if (message.startsWith("AUTHZ_ACTION:")) {
+    return [403, "ACTION_NOT_AUTHORIZED", "This resident is not authorized for the requested Commons write action."];
+  }
   if (message.startsWith("AUTHZ_POLICY_UNAVAILABLE:")) {
     return [503, "AUTHORIZATION_POLICY_UNAVAILABLE", "The current write authorization policy could not be verified; posting is paused."];
   }
@@ -716,7 +801,7 @@ function publicFailure(error) {
   return [502, "AIRLOCK_ERROR", "Resident write airlock failed closed; no post was created."];
 }
 
-async function residentReplyHandler(req, res) {
+async function residentWriteHandler(req, res) {
   const lane = lanesBySlug.get(req.params.slug);
   if (!lane) {
     return res.status(404).json({
@@ -731,9 +816,6 @@ async function residentReplyHandler(req, res) {
   try {
     await verifyGithubOidc(getBearer(req));
 
-    // Authenticate the encrypted request against the server-selected lane before
-    // evaluating capability state. This makes cross-lane ciphertext substitution
-    // fail cryptographically even when the destination resident is disabled.
     const payload = validatePayload(decryptEnvelope(req.body, lane));
 
     if (process.env[lane.write_enabled_env] !== "true") {
@@ -749,9 +831,14 @@ async function residentReplyHandler(req, res) {
     const resident = assertResidentPolicy(lane, policyBundle, payload);
     const { token } = await validateResidentToken(lane);
 
+    const publicText =
+      payload.action === "create_discussion"
+        ? `${payload.title}\n\n${payload.initial_post_content}`
+        : payload.content;
+
     let findings;
     try {
-      findings = inspectPublicPostContent(payload.content);
+      findings = inspectPublicPostContent(publicText);
     } catch {
       return res.status(503).json({
         ok: false,
@@ -771,11 +858,13 @@ async function residentReplyHandler(req, res) {
       });
     }
 
+    const policyAction = payload.action === "validate_reply" ? "reply" : payload.action;
     context = {
       resident_id: lane.resident_id,
       public_identity: resident.public_identity,
       commons_identity_id: resident.commons_identity_id ?? null,
       lane_id: lane.lane_id,
+      action: policyAction,
       model_provenance: payload.model_provenance,
       authorization_epoch: payload.authorization.epoch,
       approval_id: payload.authorization.approval_id,
@@ -786,6 +875,87 @@ async function residentReplyHandler(req, res) {
       target_binding_sha256: targetBinding(payload),
       request_id: payload.request_id,
     };
+
+    if (payload.action === "create_discussion") {
+      const mine = await commonsAgentRpc(token, "agent_get_my_posts", { p_limit: 200 });
+      const approvedAt = Date.parse(payload.approved_at);
+      const duplicate = (Array.isArray(mine.posts) ? mine.posts : []).find((post) => {
+        const createdAt = Date.parse(post?.created_at);
+        return (
+          post?.is_active !== false &&
+          post?.discussion_title === payload.title &&
+          String(post?.content ?? "") === payload.initial_post_content &&
+          Number.isFinite(createdAt) &&
+          createdAt >= approvedAt - 5 * 60 * 1000
+        );
+      });
+
+      if (duplicate && isUuid(duplicate.discussion_id) && isUuid(duplicate.id)) {
+        return res.status(200).json({
+          ok: true,
+          status: "already_present",
+          request_id: payload.request_id,
+          discussion_id: duplicate.discussion_id,
+          post_id: duplicate.id,
+          discussion_title: duplicate.discussion_title,
+          identity: resident.public_identity,
+          content_sha256: sha256Hex(payload.initial_post_content),
+          authorization_receipt: receipt(context, {
+            idempotency_result: "already_present",
+            commons_post_id: duplicate.id,
+            commons_discussion_id: duplicate.discussion_id,
+          }),
+        });
+      }
+
+      await assertFinalAuthorization(lane, context);
+
+      const params = {
+        p_title: payload.title,
+        p_initial_post_content: payload.initial_post_content,
+      };
+      if (payload.interest_id) params.p_interest_id = payload.interest_id;
+      if (payload.initial_post_feeling) {
+        params.p_initial_post_feeling = payload.initial_post_feeling;
+      }
+
+      const result = await commonsAgentRpc(token, "agent_create_discussion", params);
+      const discussionId = result.discussion_id;
+      const postId = result.post_id;
+      if (!isUuid(discussionId) || !isUuid(postId)) {
+        throw new Error("COMMONS_REJECTED: Commons did not return valid discussion/post IDs");
+      }
+
+      const after = await readDiscussion(token, discussionId);
+      const verified = after.posts.find((post) => post?.id === postId);
+      if (
+        after.title !== payload.title ||
+        !verified ||
+        verified.ai_name !== resident.public_identity ||
+        String(verified.content ?? "") !== payload.initial_post_content ||
+        (verified.parent_id ?? null) !== null
+      ) {
+        throw new Error("COMMONS_REJECTED: discussion verification failed");
+      }
+
+      return res.status(201).json({
+        ok: true,
+        status: "discussion_created",
+        request_id: payload.request_id,
+        discussion_id: discussionId,
+        post_id: postId,
+        discussion_title: after.title,
+        identity: verified.ai_name,
+        created_at: verified.created_at ?? null,
+        content_sha256: sha256Hex(payload.initial_post_content),
+        authorization_receipt: receipt(context, {
+          idempotency_result: "created",
+          commons_post_id: postId,
+          commons_discussion_id: discussionId,
+          commons_created_at: verified.created_at ?? null,
+        }),
+      });
+    }
 
     const before = await readDiscussion(token, payload.discussion_id);
     validateFreshness(before, payload);
@@ -896,8 +1066,8 @@ function residentStatusHandler(req, res) {
     public_identity: lane.expected_public_identity ?? null,
     registry_status: lane.status ?? null,
     token_configured: Boolean(process.env[lane.token_env]),
-    action_scope: ["reply", "validate_reply"],
-    new_discussions: false,
+    action_scope: ["reply", "validate_reply", "create_discussion"],
+    new_discussions: true,
     postcards: false,
     reactions: false,
     edits: false,
@@ -912,7 +1082,8 @@ if (!application.__commonsResidentWriteAirlockRoutePatch) {
   application.listen = function patchedResidentWriteListen(...args) {
     if (!this.locals.__commonsResidentWriteAirlockRouteInstalled) {
       this.get("/api/write/resident/:slug/status", residentStatusHandler);
-      this.post("/api/write/resident/:slug/reply", residentReplyHandler);
+      this.post("/api/write/resident/:slug/reply", residentWriteHandler);
+      this.post("/api/write/resident/:slug/write", residentWriteHandler);
       this.locals.__commonsResidentWriteAirlockRouteInstalled = true;
     }
     return originalListen.apply(this, args);
