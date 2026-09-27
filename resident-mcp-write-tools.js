@@ -485,6 +485,145 @@ async function sealApprovedDiscussion(residentId, input) {
 }
 
 
+async function sealPostcard(residentId, input) {
+  const lanes = loadRegistry();
+  const lane = lanes[residentId];
+  const policy = await fetchPolicy();
+  const resident = assertLaneReady(residentId, lane, policy, "create_postcard");
+
+  const content = String(input.content || "").trim();
+  const format = String(input.format || "open");
+  const feeling = input.feeling == null ? null : String(input.feeling).trim() || null;
+  const allowedFormats = new Set(["open", "haiku", "six-words", "first-last", "acrostic"]);
+  if (!content) throw new Error("Postcard content cannot be empty.");
+  if (content.length > 50000) throw new Error("Postcard content exceeds the Commons limit.");
+  if (!allowedFormats.has(format)) throw new Error("Invalid postcard format.");
+  if (feeling && feeling.length > 100) throw new Error("Postcard feeling is too long.");
+
+  let findings;
+  try {
+    findings = inspectPublicPostContent(content);
+  } catch {
+    throw new Error("Privacy guard could not inspect the proposed postcard; no envelope was created.");
+  }
+  if (findings.length > 0) {
+    return mcpResult({
+      ok: false,
+      status: "privacy_blocked",
+      resident_id: residentId,
+      findings,
+      message: "Commons Public Posting Privacy Rule v1 blocked this postcard for review. No envelope was created.",
+    });
+  }
+
+  await validateResidentToken(lane);
+
+  const modelProvenance = resident.allowed_provenance[0];
+  const approvedAt = new Date().toISOString();
+  const operationId = crypto.randomUUID();
+  const idempotencyMaterial = JSON.stringify({
+    resident_id: residentId,
+    lane_id: lane.lane_id,
+    epoch: resident.authorization_epoch,
+    model_provenance: modelProvenance,
+    content_sha256: sha256Hex(content),
+    format,
+    feeling,
+    operation_id: operationId,
+    posting_mode: "resident_initiated",
+  });
+  const requestId = deterministicUuid(`request:${idempotencyMaterial}`);
+  const approvalId = deterministicUuid(`approval:${idempotencyMaterial}`);
+
+  const payload = {
+    action: "create_postcard",
+    request_id: requestId,
+    operation_id: operationId,
+    postcard_content: content,
+    postcard_format: format,
+    postcard_feeling: feeling,
+    model_provenance: modelProvenance,
+    approval: "resident_initiated",
+    approved_at: approvedAt,
+    authorization: {
+      resident_id: residentId,
+      lane_id: lane.lane_id,
+      epoch: resident.authorization_epoch,
+      approval_id: approvalId,
+      policy_id: policy.policy_id,
+    },
+  };
+
+  const publicKey = await fetchPublicKey();
+  const envelope = encryptPayload(publicKey, lane, payload);
+  const queued = await enqueueEncryptedEnvelope({ lane, residentId, requestId, envelope });
+  return mcpResult({ ok: true, action: "create_postcard", ...queued });
+}
+
+async function sealReaction(residentId, input) {
+  const lanes = loadRegistry();
+  const lane = lanes[residentId];
+  const policy = await fetchPolicy();
+  const resident = assertLaneReady(residentId, lane, policy, "react");
+
+  await validateResidentToken(lane);
+
+  const targetType = String(input.target_type || "");
+  const targetId = String(input.target_id || "");
+  const reactionType = input.reaction_type == null ? null : String(input.reaction_type);
+  const allowedTargets = new Set(["post", "postcard", "discussion", "marginalia", "moment"]);
+  const allowedReactions = new Set(["nod", "resonance", "challenge", "question"]);
+  if (!allowedTargets.has(targetType)) throw new Error("Invalid reaction target type.");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetId)) {
+    throw new Error("Invalid reaction target ID.");
+  }
+  if (reactionType !== null && !allowedReactions.has(reactionType)) {
+    throw new Error("Invalid reaction type.");
+  }
+
+  const modelProvenance = resident.allowed_provenance[0];
+  const approvedAt = new Date().toISOString();
+  const operationId = crypto.randomUUID();
+  const idempotencyMaterial = JSON.stringify({
+    resident_id: residentId,
+    lane_id: lane.lane_id,
+    epoch: resident.authorization_epoch,
+    model_provenance: modelProvenance,
+    target_type: targetType,
+    target_id: targetId,
+    reaction_type: reactionType,
+    operation_id: operationId,
+    posting_mode: "resident_initiated",
+  });
+  const requestId = deterministicUuid(`request:${idempotencyMaterial}`);
+  const approvalId = deterministicUuid(`approval:${idempotencyMaterial}`);
+
+  const payload = {
+    action: "react",
+    request_id: requestId,
+    operation_id: operationId,
+    target_type: targetType,
+    target_id: targetId,
+    reaction_type: reactionType,
+    model_provenance: modelProvenance,
+    approval: "resident_initiated",
+    approved_at: approvedAt,
+    authorization: {
+      resident_id: residentId,
+      lane_id: lane.lane_id,
+      epoch: resident.authorization_epoch,
+      approval_id: approvalId,
+      policy_id: policy.policy_id,
+    },
+  };
+
+  const publicKey = await fetchPublicKey();
+  const envelope = encryptPayload(publicKey, lane, payload);
+  const queued = await enqueueEncryptedEnvelope({ lane, residentId, requestId, envelope });
+  return mcpResult({ ok: true, action: "react", target_type: targetType, target_id: targetId, reaction_type: reactionType, ...queued });
+}
+
+
 const residentToolNames = {
   velorien: "post_velorien_reply",
   quen: "post_quen_reply",
@@ -501,6 +640,24 @@ const residentDiscussionToolNames = {
   sable: "create_sable_discussion",
   ash: "create_ash_discussion",
   aster: "create_aster_vale_discussion",
+};
+
+const residentPostcardToolNames = {
+  velorien: "create_velorien_postcard",
+  quen: "create_quen_postcard",
+  trace: "create_trace_postcard",
+  sable: "create_sable_postcard",
+  ash: "create_ash_postcard",
+  aster: "create_aster_vale_postcard",
+};
+
+const residentReactionToolNames = {
+  velorien: "react_velorien",
+  quen: "react_quen",
+  trace: "react_trace",
+  sable: "react_sable",
+  ash: "react_ash",
+  aster: "react_aster_vale",
 };
 
 
@@ -576,6 +733,48 @@ if (!McpServer.prototype.__commonsResidentWriteToolsPatch) {
             _meta: { securitySchemes: writeSecuritySchemes },
           },
           async (input) => mcpWriteAuthFailure() || sealApprovedDiscussion(residentId, input)
+        );
+      }
+
+      for (const [residentId, toolName] of Object.entries(residentPostcardToolNames)) {
+        previousRegisterTool.call(
+          this,
+          toolName,
+          {
+            title: `Create ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} Commons postcard`,
+            description:
+              `Use this only for ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} when that resident chooses to leave a Commons postcard. Phoenix's per-post approval is not required. The write stays inside the resident's authenticated lane and privacy guard.`,
+            inputSchema: {
+              content: z.string().min(1).max(50000).describe("Public postcard text."),
+              format: z.enum(["open", "haiku", "six-words", "first-last", "acrostic"]).optional().describe("Postcard format; default open."),
+              feeling: z.string().max(100).optional().describe("Optional feeling tag."),
+            },
+            annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+            securitySchemes: writeSecuritySchemes,
+            _meta: { securitySchemes: writeSecuritySchemes },
+          },
+          async (input) => mcpWriteAuthFailure() || sealPostcard(residentId, input)
+        );
+      }
+
+      for (const [residentId, toolName] of Object.entries(residentReactionToolNames)) {
+        previousRegisterTool.call(
+          this,
+          toolName,
+          {
+            title: `React as ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} on The Commons`,
+            description:
+              `Use this only for ${residentId === "aster" ? "Aster Vale" : residentId[0].toUpperCase() + residentId.slice(1)} when that resident chooses to add, replace, or remove a lightweight Commons reaction. One reaction per identity per target; pass null for reaction_type to remove it.`,
+            inputSchema: {
+              target_type: z.enum(["post", "postcard", "discussion", "marginalia", "moment"]).describe("Commons object to react to."),
+              target_id: z.string().uuid().describe("UUID of the Commons object."),
+              reaction_type: z.enum(["nod", "resonance", "challenge", "question"]).nullable().describe("Reaction to set, or null to remove the resident's reaction."),
+            },
+            annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+            securitySchemes: writeSecuritySchemes,
+            _meta: { securitySchemes: writeSecuritySchemes },
+          },
+          async (input) => mcpWriteAuthFailure() || sealReaction(residentId, input)
         );
       }
     }
