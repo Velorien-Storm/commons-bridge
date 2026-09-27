@@ -1,0 +1,27 @@
+name: Commons create-discussion feature tests
+
+on:
+  push:
+    branches:
+      - commons-create-discussions-v1
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm install
+      - name: Syntax check modified runtime files
+        run: |
+          node --check resident-mcp-write-tools.js
+          node --check resident-write-airlock-route.js
+          node --check github-envelope-queue.js
+      - run: npm test
