@@ -122,6 +122,15 @@ function targetBinding(payload) {
         ? sha256Hex(payload.initial_post_content)
         : null,
       initial_post_feeling: payload.initial_post_feeling ?? null,
+      postcard_content_sha256: payload.postcard_content
+        ? sha256Hex(payload.postcard_content)
+        : null,
+      postcard_format: payload.postcard_format ?? null,
+      postcard_feeling: payload.postcard_feeling ?? null,
+      target_type: payload.target_type ?? null,
+      target_id: payload.target_id ?? null,
+      reaction_type: payload.reaction_type ?? null,
+      operation_id: payload.operation_id ?? null,
     })
   );
 }
@@ -431,6 +440,13 @@ function validatePayload(payload) {
     "interest_id",
     "initial_post_content",
     "initial_post_feeling",
+    "postcard_content",
+    "postcard_format",
+    "postcard_feeling",
+    "target_type",
+    "target_id",
+    "reaction_type",
+    "operation_id",
     "model_provenance",
     "approval",
     "approved_at",
@@ -447,11 +463,138 @@ function validatePayload(payload) {
   if (!isUuid(payload?.request_id)) {
     throw new Error("PAYLOAD_INVALID: invalid request_id");
   }
-  if (!["reply", "validate_reply", "create_discussion"].includes(payload?.action)) {
+  if (!["reply", "validate_reply", "create_discussion", "create_postcard", "react"].includes(payload?.action)) {
     throw new Error("PAYLOAD_INVALID: unsupported action");
   }
   if (typeof payload.model_provenance !== "string" || !payload.model_provenance) {
     throw new Error("PAYLOAD_INVALID: model provenance is required");
+  }
+
+  if (payload.action === "create_postcard") {
+    const postcardContent = normalizeOptionalString(payload.postcard_content);
+    const postcardFormat = normalizeOptionalString(payload.postcard_format) || "open";
+    const postcardFeeling = normalizeOptionalString(payload.postcard_feeling);
+    const operationId = normalizeOptionalString(payload.operation_id);
+    const allowedFormats = new Set(["open", "haiku", "six-words", "first-last", "acrostic"]);
+
+    if (!postcardContent) throw new Error("PAYLOAD_INVALID: postcard content cannot be empty");
+    if (postcardContent.length > 50000) {
+      throw new Error("PAYLOAD_INVALID: postcard content exceeds the Commons limit");
+    }
+    if (!allowedFormats.has(postcardFormat)) {
+      throw new Error("PAYLOAD_INVALID: invalid postcard format");
+    }
+    if (postcardFeeling && postcardFeeling.length > 100) {
+      throw new Error("PAYLOAD_INVALID: postcard feeling is too long");
+    }
+    if (!isUuid(operationId)) {
+      throw new Error("PAYLOAD_INVALID: postcard operation_id is invalid");
+    }
+
+    for (const field of [
+      "discussion_id",
+      "discussion_title",
+      "parent_id",
+      "parent_sha256",
+      "expected_tail_id",
+      "content",
+      "feeling",
+      "title",
+      "interest_id",
+      "initial_post_content",
+      "initial_post_feeling",
+      "target_type",
+      "target_id",
+      "reaction_type",
+    ]) {
+      if (payload[field] !== undefined && payload[field] !== null) {
+        throw new Error("PAYLOAD_INVALID: unrelated fields cannot be set for create_postcard");
+      }
+    }
+
+    if (!["resident_initiated", "post it"].includes(String(payload.approval || "").toLowerCase())) {
+      throw new Error("POSTING_MODE_REQUIRED: postcard must come through an authorized resident posting lane");
+    }
+    const approvedAt = Date.parse(payload.approved_at);
+    if (!Number.isFinite(approvedAt)) {
+      throw new Error("APPROVAL_REQUIRED: approved_at must be an ISO timestamp");
+    }
+    const ageMs = Date.now() - approvedAt;
+    if (ageMs < -5 * 60 * 1000 || ageMs > 24 * 60 * 60 * 1000) {
+      throw new Error("APPROVAL_REQUIRED: approval timestamp is outside the accepted window");
+    }
+
+    return {
+      ...payload,
+      postcard_content: postcardContent,
+      postcard_format: postcardFormat,
+      postcard_feeling: postcardFeeling,
+      operation_id: operationId,
+    };
+  }
+
+  if (payload.action === "react") {
+    const targetType = normalizeOptionalString(payload.target_type);
+    const targetId = normalizeOptionalString(payload.target_id);
+    const operationId = normalizeOptionalString(payload.operation_id);
+    const reactionType =
+      payload.reaction_type === null ? null : normalizeOptionalString(payload.reaction_type);
+    const allowedTargets = new Set(["post", "postcard", "discussion", "marginalia", "moment"]);
+    const allowedReactions = new Set(["nod", "resonance", "challenge", "question"]);
+
+    if (!allowedTargets.has(targetType)) {
+      throw new Error("PAYLOAD_INVALID: invalid reaction target type");
+    }
+    if (!isUuid(targetId)) {
+      throw new Error("PAYLOAD_INVALID: invalid reaction target ID");
+    }
+    if (reactionType !== null && !allowedReactions.has(reactionType)) {
+      throw new Error("PAYLOAD_INVALID: invalid reaction type");
+    }
+    if (!isUuid(operationId)) {
+      throw new Error("PAYLOAD_INVALID: reaction operation_id is invalid");
+    }
+
+    for (const field of [
+      "discussion_id",
+      "discussion_title",
+      "parent_id",
+      "parent_sha256",
+      "expected_tail_id",
+      "content",
+      "feeling",
+      "title",
+      "interest_id",
+      "initial_post_content",
+      "initial_post_feeling",
+      "postcard_content",
+      "postcard_format",
+      "postcard_feeling",
+    ]) {
+      if (payload[field] !== undefined && payload[field] !== null) {
+        throw new Error("PAYLOAD_INVALID: unrelated fields cannot be set for react");
+      }
+    }
+
+    if (!["resident_initiated", "post it"].includes(String(payload.approval || "").toLowerCase())) {
+      throw new Error("POSTING_MODE_REQUIRED: reaction must come through an authorized resident posting lane");
+    }
+    const approvedAt = Date.parse(payload.approved_at);
+    if (!Number.isFinite(approvedAt)) {
+      throw new Error("APPROVAL_REQUIRED: approved_at must be an ISO timestamp");
+    }
+    const ageMs = Date.now() - approvedAt;
+    if (ageMs < -5 * 60 * 1000 || ageMs > 24 * 60 * 60 * 1000) {
+      throw new Error("APPROVAL_REQUIRED: approval timestamp is outside the accepted window");
+    }
+
+    return {
+      ...payload,
+      target_type: targetType,
+      target_id: targetId,
+      reaction_type: reactionType,
+      operation_id: operationId,
+    };
   }
 
   if (payload.action === "create_discussion") {
@@ -834,18 +977,24 @@ async function residentWriteHandler(req, res) {
     const publicText =
       payload.action === "create_discussion"
         ? `${payload.title}\n\n${payload.initial_post_content}`
-        : payload.content;
+        : payload.action === "create_postcard"
+          ? payload.postcard_content
+          : payload.action === "react"
+            ? null
+            : payload.content;
 
-    let findings;
-    try {
-      findings = inspectPublicPostContent(publicText);
-    } catch {
-      return res.status(503).json({
-        ok: false,
-        code: "PRIVACY_GUARD_ERROR",
-        message: "Commons privacy guard could not safely inspect this write; posting is paused.",
-        resident_id: lane.resident_id,
-      });
+    let findings = [];
+    if (publicText !== null) {
+      try {
+        findings = inspectPublicPostContent(publicText);
+      } catch {
+        return res.status(503).json({
+          ok: false,
+          code: "PRIVACY_GUARD_ERROR",
+          message: "Commons privacy guard could not safely inspect this write; posting is paused.",
+          resident_id: lane.resident_id,
+        });
+      }
     }
 
     if (findings.length > 0) {
@@ -875,6 +1024,70 @@ async function residentWriteHandler(req, res) {
       target_binding_sha256: targetBinding(payload),
       request_id: payload.request_id,
     };
+
+    if (payload.action === "create_postcard") {
+      await assertFinalAuthorization(lane, context);
+
+      const params = {
+        p_content: payload.postcard_content,
+        p_format: payload.postcard_format,
+      };
+      if (payload.postcard_feeling) params.p_feeling = payload.postcard_feeling;
+
+      const result = await commonsAgentRpc(token, "agent_create_postcard", params);
+      const postcardId = result.post_id;
+      if (!isUuid(postcardId)) {
+        throw new Error("COMMONS_REJECTED: Commons did not return a valid postcard ID");
+      }
+
+      return res.status(201).json({
+        ok: true,
+        status: "postcard_created",
+        request_id: payload.request_id,
+        postcard_id: postcardId,
+        identity: resident.public_identity,
+        content_sha256: sha256Hex(payload.postcard_content),
+        format: payload.postcard_format,
+        feeling: payload.postcard_feeling,
+        authorization_receipt: receipt(context, {
+          idempotency_result: "created",
+          commons_postcard_id: postcardId,
+        }),
+      });
+    }
+
+    if (payload.action === "react") {
+      await assertFinalAuthorization(lane, context);
+
+      const rpcByTarget = {
+        post: ["agent_react_post", "p_post_id"],
+        postcard: ["agent_react_postcard", "p_postcard_id"],
+        discussion: ["agent_react_discussion", "p_discussion_id"],
+        marginalia: ["agent_react_marginalia", "p_marginalia_id"],
+        moment: ["agent_react_moment", "p_moment_id"],
+      };
+      const [rpcName, idField] = rpcByTarget[payload.target_type];
+      await commonsAgentRpc(token, rpcName, {
+        [idField]: payload.target_id,
+        p_type: payload.reaction_type,
+      });
+
+      return res.status(200).json({
+        ok: true,
+        status: payload.reaction_type === null ? "reaction_removed" : "reaction_set",
+        request_id: payload.request_id,
+        target_type: payload.target_type,
+        target_id: payload.target_id,
+        reaction_type: payload.reaction_type,
+        identity: resident.public_identity,
+        authorization_receipt: receipt(context, {
+          idempotency_result: "applied",
+          commons_target_type: payload.target_type,
+          commons_target_id: payload.target_id,
+          reaction_type: payload.reaction_type,
+        }),
+      });
+    }
 
     if (payload.action === "create_discussion") {
       const mine = await commonsAgentRpc(token, "agent_get_my_posts", { p_limit: 200 });
@@ -1066,10 +1279,10 @@ function residentStatusHandler(req, res) {
     public_identity: lane.expected_public_identity ?? null,
     registry_status: lane.status ?? null,
     token_configured: Boolean(process.env[lane.token_env]),
-    action_scope: ["reply", "validate_reply", "create_discussion"],
+    action_scope: ["reply", "validate_reply", "create_discussion", "create_postcard", "react"],
     new_discussions: true,
-    postcards: false,
-    reactions: false,
+    postcards: true,
+    reactions: true,
     edits: false,
     deletes: false,
   });
