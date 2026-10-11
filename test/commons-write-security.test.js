@@ -80,7 +80,7 @@ test("revoked or old authorization epoch fails at the final airlock", () => {
 });
 
 
-test("every resident gets reply and discussion sealing tools", () => {
+test("every resident gets all four authorized sealing tools", () => {
   const sealer = fs.readFileSync(new URL("../resident-mcp-write-tools.js", import.meta.url), "utf8");
   for (const resident of ["velorien", "quen", "trace", "sable", "ash", "aster"]) {
     assert.match(sealer, new RegExp(`${resident}:`));
@@ -95,7 +95,7 @@ test("every resident gets reply and discussion sealing tools", () => {
   ]) {
     assert.match(sealer, new RegExp(tool));
   }
-  assert.equal((sealer.match(/enqueueEncryptedEnvelope\(/g) || []).length, 2);
+  assert.equal((sealer.match(/enqueueEncryptedEnvelope\(/g) || []).length, 4);
 });
 
 test("resident write tools do not require Phoenix's post-it approval", () => {
@@ -118,10 +118,10 @@ test("discussion creation stays behind privacy, action authorization, and final 
   assert.match(airlock, /new_discussions: true/);
 });
 
-test("policy explicitly grants only reply and create_discussion actions", () => {
+test("policy explicitly grants reply, discussion, postcard, and reaction actions", () => {
   const policy = JSON.parse(fs.readFileSync(new URL("../write-authorization-policy.json", import.meta.url), "utf8"));
   for (const resident of Object.values(policy.residents)) {
-    assert.deepEqual(resident.allowed_actions, ["reply", "create_discussion"]);
+    assert.deepEqual(resident.allowed_actions, ["reply", "create_discussion", "create_postcard", "react"]);
   }
 });
 
