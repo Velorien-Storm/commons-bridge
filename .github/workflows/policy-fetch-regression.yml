@@ -1,0 +1,29 @@
+name: Isolated policy fetch regression
+on:
+  push:
+    branches:
+      - test/policy-fetch-auth-r2-20261011
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      COMMONS_POLICY_GITHUB_TOKEN: ""
+      GITHUB_QUEUE_TOKEN: ""
+      THE_COMMONS_AGENT_TOKEN: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependency tree (no lifecycle scripts)
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Run existing repository security suite
+        run: npm test
+      - name: Verify candidate module loads without external requests
+        run: node --import ./github-policy-fetch-auth.js --input-type=module -e "if (!globalThis.__commonsPolicyGithubAuthenticationInstalled) process.exit(1);"
