@@ -9,7 +9,7 @@ test("policy credential is confined to approved path and ref", async () => {
   await wrapped(GOOD);
   assert.equal(new Headers(calls[0].opts.headers).get("authorization"), "Bearer test-token");
   await wrapped("https://api.github.com/repos/Velorien-Storm/commons-bridge/contents/unrelated.json?ref=commons-drive-v0.2");
-  assert.equal(calls[1].opts, undefined);
+  assert.equal(new Headers(calls[1].opts?.headers).has("authorization"), false);
   assert.equal(calls.length, 2);
 });
 test("rejects duplicate or conflicting ref before fetch", async () => {
